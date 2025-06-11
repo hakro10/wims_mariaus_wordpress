@@ -222,6 +222,7 @@ add_action('wp_ajax_sell_inventory_item_detailed', 'handle_sell_inventory_item_d
 add_action('wp_ajax_get_inventory_item', 'handle_get_inventory_item');
 add_action('wp_ajax_get_inventory_items', 'handle_get_inventory_items');
 add_action('wp_ajax_get_sale_details', 'handle_get_sale_details');
+add_action('wp_ajax_record_sale', 'handle_record_sale');
 
 function handle_add_inventory_item() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -318,6 +319,113 @@ function handle_get_sale_details() {
         wp_send_json_success($sale);
     } else {
         wp_send_json_error('Sale not found');
+    }
+}
+
+function handle_record_sale() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    $sales_table = $wpdb->prefix . 'wh_sales';
+    
+    $item_id = intval($_POST['item_id']);
+    $quantity_sold = intval($_POST['quantity']);
+    $unit_price = floatval($_POST['unit_price']);
+    $customer_name = sanitize_text_field($_POST['customer_name']);
+    $customer_email = sanitize_email($_POST['customer_email']);
+    $payment_method = sanitize_text_field($_POST['payment_method']);
+    $notes = sanitize_textarea_field($_POST['notes']);
+    
+    // Get current item details
+    $item = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $items_table WHERE id = %d", 
+        $item_id
+    ));
+    
+    if (!$item) {
+        wp_send_json_error('Item not found');
+        return;
+    }
+    
+    if ($item->quantity < $quantity_sold) {
+        wp_send_json_error('Not enough stock available. Current stock: ' . $item->quantity);
+        return;
+    }
+    
+    // Generate sale number
+    $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+    
+    // Ensure unique sale number
+    while ($wpdb->get_var($wpdb->prepare("SELECT id FROM $sales_table WHERE sale_number = %s", $sale_number))) {
+        $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+    }
+    
+    $total_amount = $quantity_sold * $unit_price;
+    
+    // Start transaction
+    $wpdb->query('START TRANSACTION');
+    
+    try {
+        // Record the sale
+        $sale_result = $wpdb->insert(
+            $sales_table,
+            array(
+                'sale_number' => $sale_number,
+                'item_id' => $item_id,
+                'quantity_sold' => $quantity_sold,
+                'unit_price' => $unit_price,
+                'total_amount' => $total_amount,
+                'customer_name' => $customer_name,
+                'customer_email' => $customer_email,
+                'payment_method' => $payment_method,
+                'payment_status' => 'completed',
+                'notes' => $notes,
+                'sold_by' => get_current_user_id(),
+                'sale_date' => current_time('mysql')
+            )
+        );
+        
+        if (!$sale_result) {
+            throw new Exception('Failed to record sale');
+        }
+        
+        // Update inventory
+        $new_quantity = $item->quantity - $quantity_sold;
+        $new_status = $new_quantity == 0 ? 'out-of-stock' : 
+                     ($new_quantity <= $item->min_stock_level ? 'low-stock' : 'in-stock');
+        
+        $update_result = $wpdb->update(
+            $items_table,
+            array(
+                'quantity' => $new_quantity,
+                'status' => $new_status
+            ),
+            array('id' => $item_id),
+            array('%d', '%s'),
+            array('%d')
+        );
+        
+        if ($update_result === false) {
+            throw new Exception('Failed to update inventory');
+        }
+        
+        // Commit transaction
+        $wpdb->query('COMMIT');
+        
+        wp_send_json_success(array(
+            'sale_number' => $sale_number,
+            'message' => 'Sale recorded successfully!'
+        ));
+        
+    } catch (Exception $e) {
+        // Rollback transaction
+        $wpdb->query('ROLLBACK');
+        wp_send_json_error('Transaction failed: ' . $e->getMessage());
     }
 }
 

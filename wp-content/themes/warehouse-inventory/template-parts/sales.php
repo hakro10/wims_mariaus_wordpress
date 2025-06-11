@@ -134,7 +134,7 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
         </div>
         
         <div class="action-buttons">
-            <button class="btn btn-primary" onclick="window.location.href='?tab=inventory'">
+            <button class="btn btn-primary" onclick="openRecordSaleModal()">
                 <i class="fas fa-plus"></i> Record Sale
             </button>
             <button class="btn btn-secondary" onclick="exportSales()">
@@ -252,45 +252,80 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
 </div>
 
 <!-- Record Sale Modal -->
-<div id="record-sale-modal" class="modal-overlay" style="display: none;">
-    <div class="modal">
-        <div class="modal-header">
-            <h3 class="modal-title">Record Sale</h3>
+<div id="record-sale-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 500px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Record Sale</h3>
+            <button onclick="closeRecordSaleModal()" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
-        <div class="modal-body">
+        <div style="padding: 20px !important;">
             <form id="record-sale-form">
-                <div class="form-group">
-                    <label class="form-label">Item *</label>
-                    <select name="item_id" class="form-select" required>
-                        <option value="">Select Item</option>
-                        <!-- Items will be loaded via AJAX -->
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Quantity *</label>
-                    <input type="number" name="quantity" class="form-input" min="1" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Unit Price *</label>
-                    <input type="number" name="unit_price" class="form-input" step="0.01" min="0" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Customer Name</label>
-                    <input type="text" name="customer_name" class="form-input">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Customer Email</label>
-                    <input type="email" name="customer_email" class="form-input">
-                </div>
+                <table style="width: 100% !important; border-collapse: collapse !important;">
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Item *</label>
+                            <select name="item_id" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="">Select Item</option>
+                                <!-- Items will be loaded via AJAX -->
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 48% !important; padding-right: 2% !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Quantity *</label>
+                                        <input type="number" name="quantity" min="1" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                    <td style="width: 48% !important; padding-left: 2% !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Unit Price *</label>
+                                        <input type="number" name="unit_price" step="0.01" min="0" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 48% !important; padding-right: 2% !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Customer Name</label>
+                                        <input type="text" name="customer_name" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                    <td style="width: 48% !important; padding-left: 2% !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Customer Email</label>
+                                        <input type="email" name="customer_email" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Payment Method</label>
+                            <select name="payment_method" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="cash">Cash</option>
+                                <option value="card">Credit/Debit Card</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                                <option value="check">Check</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Notes</label>
+                            <textarea name="notes" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
+                        </td>
+                    </tr>
+                </table>
             </form>
         </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary btn-close-modal">Cancel</button>
-            <button type="button" class="btn btn-primary" onclick="submitRecordSale()">Record Sale</button>
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeRecordSaleModal()" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="button" onclick="submitRecordSale()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Record Sale</button>
         </div>
     </div>
 </div>
@@ -780,8 +815,113 @@ function viewWarranty(saleId) {
     alert('Warranty details functionality coming soon!');
 }
 
+// Record Sale Modal Functions
+function openRecordSaleModal() {
+    document.getElementById('record-sale-modal').style.display = 'block';
+    loadInventoryItems();
+}
+
+function closeRecordSaleModal() {
+    document.getElementById('record-sale-modal').style.display = 'none';
+    document.getElementById('record-sale-form').reset();
+}
+
+function loadInventoryItems() {
+    // Load inventory items for the dropdown
+    fetch(warehouseAjax.ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'get_inventory_items',
+            nonce: warehouseAjax.nonce
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const select = document.querySelector('#record-sale-form select[name="item_id"]');
+            select.innerHTML = '<option value="">Select Item</option>';
+            data.data.forEach(item => {
+                if (item.quantity > 0) {
+                    select.innerHTML += `<option value="${item.id}" data-price="${item.selling_price}">${item.name} (Stock: ${item.quantity})</option>`;
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error loading items:', error);
+    });
+}
+
+function submitRecordSale() {
+    const form = document.getElementById('record-sale-form');
+    const formData = new FormData(form);
+    
+    // Validate required fields
+    const itemId = formData.get('item_id');
+    const quantity = formData.get('quantity');
+    const unitPrice = formData.get('unit_price');
+    
+    if (!itemId || !quantity || !unitPrice) {
+        alert('Please fill in all required fields (Item, Quantity, Unit Price)');
+        return;
+    }
+    
+    // Prepare data for submission
+    const submitData = new URLSearchParams({
+        action: 'record_sale',
+        nonce: warehouseAjax.nonce,
+        item_id: itemId,
+        quantity: quantity,
+        unit_price: unitPrice,
+        customer_name: formData.get('customer_name') || '',
+        customer_email: formData.get('customer_email') || '',
+        payment_method: formData.get('payment_method') || 'cash',
+        notes: formData.get('notes') || ''
+    });
+    
+    // Submit the sale
+    fetch(warehouseAjax.ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: submitData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Sale recorded successfully!');
+            closeRecordSaleModal();
+            location.reload(); // Refresh to show new sale
+        } else {
+            alert('Error recording sale: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error recording sale. Please try again.');
+    });
+}
+
+// Auto-fill unit price when item is selected
+document.addEventListener('change', function(e) {
+    if (e.target.name === 'item_id') {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        const price = selectedOption.getAttribute('data-price');
+        if (price) {
+            document.querySelector('#record-sale-form input[name="unit_price"]').value = price;
+        }
+    }
+});
+
 // Close modal when clicking outside
 document.addEventListener('click', function(e) {
+    if (e.target.id === 'record-sale-modal') {
+        closeRecordSaleModal();
+    }
     if (e.target.classList.contains('modal-overlay')) {
         closeSaleDetailsModal();
     }
