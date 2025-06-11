@@ -101,6 +101,38 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
             <div class="stat-value"><?php echo number_format($total_sales); ?></div>
             <div class="stat-label">Total Sales</div>
         </div>
+        
+        <!-- Profit Tracking Card -->
+        <div class="stat-card profit-card">
+            <div class="stat-icon purple">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="profit-controls">
+                <div class="period-selector">
+                    <button class="period-btn active" data-period="daily" onclick="switchProfitPeriod('daily')">Daily</button>
+                    <button class="period-btn" data-period="monthly" onclick="switchProfitPeriod('monthly')">Monthly</button>
+                </div>
+                <input type="date" id="profit-date" value="<?php echo current_time('Y-m-d'); ?>" onchange="loadProfitData()">
+            </div>
+            <div class="profit-display">
+                <div class="profit-amount" id="profit-amount">$0.00</div>
+                <div class="profit-details">
+                    <div class="profit-detail">
+                        <span class="detail-label">Sales:</span>
+                        <span class="detail-value" id="profit-sales">$0.00</span>
+                    </div>
+                    <div class="profit-detail">
+                        <span class="detail-label">Cost:</span>
+                        <span class="detail-value" id="profit-cost">$0.00</span>
+                    </div>
+                    <div class="profit-detail">
+                        <span class="detail-label">Margin:</span>
+                        <span class="detail-value" id="profit-margin">0%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-label" id="profit-label">Today's Profit</div>
+        </div>
     </div>
 
     <!-- Search and Actions -->
@@ -357,6 +389,99 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 1.5rem;
     margin: 2rem 0;
+}
+
+.profit-card {
+    position: relative;
+    min-height: 200px;
+}
+
+.stat-icon.purple {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+}
+
+.profit-controls {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.period-selector {
+    display: flex;
+    background: #f3f4f6;
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.period-btn {
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #6b7280;
+}
+
+.period-btn.active {
+    background: white;
+    color: #8b5cf6;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.period-btn:hover:not(.active) {
+    color: #374151;
+}
+
+#profit-date {
+    padding: 4px 6px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 12px;
+    background: white;
+}
+
+.profit-display {
+    margin-top: 20px;
+}
+
+.profit-amount {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #111827;
+    margin-bottom: 10px;
+}
+
+.profit-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profit-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.detail-label {
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.detail-value {
+    color: #111827;
+    font-weight: 600;
+}
+
+.profit-detail:last-child .detail-value {
+    color: #8b5cf6;
 }
 
 .sales-controls {
@@ -925,5 +1050,94 @@ document.addEventListener('click', function(e) {
     if (e.target.classList.contains('modal-overlay')) {
         closeSaleDetailsModal();
     }
+});
+
+// Profit tracking functions
+let currentProfitPeriod = 'daily';
+
+function switchProfitPeriod(period) {
+    currentProfitPeriod = period;
+    
+    // Update button states
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-period="${period}"]`).classList.add('active');
+    
+    // Update date input for monthly view
+    const dateInput = document.getElementById('profit-date');
+    if (period === 'monthly') {
+        // Set to first day of current month
+        const currentDate = new Date(dateInput.value);
+        dateInput.value = currentDate.getFullYear() + '-' + 
+                         String(currentDate.getMonth() + 1).padStart(2, '0') + '-01';
+    }
+    
+    loadProfitData();
+}
+
+function loadProfitData() {
+    const date = document.getElementById('profit-date').value;
+    
+    fetch(warehouseAjax.ajaxurl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'get_profit_data',
+            nonce: warehouseAjax.nonce,
+            period_type: currentProfitPeriod,
+            date: date
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateProfitDisplay(data.data);
+        } else {
+            console.error('Error loading profit data:', data.data);
+        }
+    })
+    .catch(error => {
+        console.error('AJAX error:', error);
+    });
+}
+
+function updateProfitDisplay(data) {
+    // Format currency
+    const formatCurrency = (amount) => {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+        }).format(amount || 0);
+    };
+
+    // Update profit amount
+    document.getElementById('profit-amount').textContent = formatCurrency(data.total_profit);
+    
+    // Update details
+    document.getElementById('profit-sales').textContent = formatCurrency(data.total_sales);
+    document.getElementById('profit-cost').textContent = formatCurrency(data.total_cost);
+    document.getElementById('profit-margin').textContent = (data.profit_margin || 0).toFixed(1) + '%';
+    
+    // Update label
+    const label = currentProfitPeriod === 'daily' ? 'Daily Profit' : 'Monthly Profit';
+    document.getElementById('profit-label').textContent = label;
+    
+    // Update profit amount color based on value
+    const profitElement = document.getElementById('profit-amount');
+    if (data.total_profit > 0) {
+        profitElement.style.color = '#10b981'; // Green for profit
+    } else if (data.total_profit < 0) {
+        profitElement.style.color = '#ef4444'; // Red for loss
+    } else {
+        profitElement.style.color = '#6b7280'; // Gray for zero
+    }
+}
+
+// Load profit data on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProfitData();
 });
 </script> 

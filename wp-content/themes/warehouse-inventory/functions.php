@@ -213,6 +213,107 @@ function update_sales_table_structure() {
 add_action('after_switch_theme', 'update_sales_table_structure');
 add_action('admin_init', 'update_sales_table_structure');
 
+// Function to create profit tracking table
+function create_profit_tracking_table() {
+    global $wpdb;
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    
+    // Check if table exists
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$profit_table'");
+    
+    if (!$table_exists) {
+        $charset_collate = $wpdb->get_charset_collate();
+        
+        $sql = "CREATE TABLE $profit_table (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            date_period date NOT NULL,
+            period_type varchar(10) NOT NULL DEFAULT 'daily',
+            total_sales decimal(10,2) DEFAULT 0,
+            total_cost decimal(10,2) DEFAULT 0,
+            total_profit decimal(10,2) DEFAULT 0,
+            profit_margin decimal(5,2) DEFAULT 0,
+            sales_count int(11) DEFAULT 0,
+            items_sold int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_period (date_period, period_type),
+            INDEX idx_date (date_period),
+            INDEX idx_type (period_type)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql);
+        
+        error_log("Profit tracking table created successfully");
+    }
+}
+
+// Run profit table creation
+add_action('after_switch_theme', 'create_profit_tracking_table');
+add_action('admin_init', 'create_profit_tracking_table');
+
+// Function to populate sample profit data (for testing)
+function populate_sample_profit_data() {
+    global $wpdb;
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    
+    // Check if we already have data
+    $existing_data = $wpdb->get_var("SELECT COUNT(*) FROM $profit_table");
+    if ($existing_data > 0) {
+        return; // Don't add sample data if we already have records
+    }
+    
+    // Add sample daily data for the last 7 days
+    for ($i = 6; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-$i days"));
+        $sales = rand(500, 2000);
+        $cost = $sales * 0.6; // 60% cost ratio
+        $profit = $sales - $cost;
+        $margin = ($profit / $sales) * 100;
+        
+        $wpdb->insert(
+            $profit_table,
+            array(
+                'date_period' => $date,
+                'period_type' => 'daily',
+                'total_sales' => $sales,
+                'total_cost' => $cost,
+                'total_profit' => $profit,
+                'profit_margin' => $margin,
+                'sales_count' => rand(3, 8),
+                'items_sold' => rand(5, 15)
+            ),
+            array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
+        );
+    }
+    
+    // Add sample monthly data for current month
+    $this_month = date('Y-m-01');
+    $monthly_sales = rand(8000, 15000);
+    $monthly_cost = $monthly_sales * 0.6;
+    $monthly_profit = $monthly_sales - $monthly_cost;
+    $monthly_margin = ($monthly_profit / $monthly_sales) * 100;
+    
+    $wpdb->insert(
+        $profit_table,
+        array(
+            'date_period' => $this_month,
+            'period_type' => 'monthly',
+            'total_sales' => $monthly_sales,
+            'total_cost' => $monthly_cost,
+            'total_profit' => $monthly_profit,
+            'profit_margin' => $monthly_margin,
+            'sales_count' => rand(25, 45),
+            'items_sold' => rand(50, 100)
+        ),
+        array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
+    );
+}
+
+// Populate sample data on theme activation (for testing)
+add_action('after_switch_theme', 'populate_sample_profit_data');
+
 // AJAX handlers for inventory operations
 add_action('wp_ajax_add_inventory_item', 'handle_add_inventory_item');
 add_action('wp_ajax_update_inventory_item', 'handle_update_inventory_item');
@@ -223,6 +324,7 @@ add_action('wp_ajax_get_inventory_item', 'handle_get_inventory_item');
 add_action('wp_ajax_get_inventory_items', 'handle_get_inventory_items');
 add_action('wp_ajax_get_sale_details', 'handle_get_sale_details');
 add_action('wp_ajax_record_sale', 'handle_record_sale');
+add_action('wp_ajax_get_profit_data', 'handle_get_profit_data');
 
 function handle_add_inventory_item() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -417,6 +519,9 @@ function handle_record_sale() {
         // Commit transaction
         $wpdb->query('COMMIT');
         
+        // Update profit tracking after successful sale
+        update_profit_tracking($item_id, $quantity_sold, $unit_price);
+        
         wp_send_json_success(array(
             'sale_number' => $sale_number,
             'message' => 'Sale recorded successfully!'
@@ -427,6 +532,129 @@ function handle_record_sale() {
         $wpdb->query('ROLLBACK');
         wp_send_json_error('Transaction failed: ' . $e->getMessage());
     }
+}
+
+// Function to update profit tracking
+function update_profit_tracking($item_id, $quantity_sold, $unit_price) {
+    global $wpdb;
+    
+    // Get item cost price
+    $item = $wpdb->get_row($wpdb->prepare(
+        "SELECT purchase_price FROM {$wpdb->prefix}wh_inventory_items WHERE id = %d", 
+        $item_id
+    ));
+    
+    if (!$item || !$item->purchase_price) {
+        return; // Can't calculate profit without cost price
+    }
+    
+    $cost_price = $item->purchase_price;
+    $sale_amount = $quantity_sold * $unit_price;
+    $cost_amount = $quantity_sold * $cost_price;
+    $profit_amount = $sale_amount - $cost_amount;
+    
+    $today = current_time('Y-m-d');
+    $this_month = current_time('Y-m-01');
+    
+    // Update daily profit
+    update_profit_record($today, 'daily', $sale_amount, $cost_amount, $profit_amount, 1, $quantity_sold);
+    
+    // Update monthly profit
+    update_profit_record($this_month, 'monthly', $sale_amount, $cost_amount, $profit_amount, 1, $quantity_sold);
+}
+
+function update_profit_record($date_period, $period_type, $sale_amount, $cost_amount, $profit_amount, $sales_count, $items_sold) {
+    global $wpdb;
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    
+    // Check if record exists
+    $existing = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
+        $date_period, $period_type
+    ));
+    
+    if ($existing) {
+        // Update existing record
+        $new_total_sales = $existing->total_sales + $sale_amount;
+        $new_total_cost = $existing->total_cost + $cost_amount;
+        $new_total_profit = $existing->total_profit + $profit_amount;
+        $new_sales_count = $existing->sales_count + $sales_count;
+        $new_items_sold = $existing->items_sold + $items_sold;
+        $new_profit_margin = $new_total_sales > 0 ? ($new_total_profit / $new_total_sales) * 100 : 0;
+        
+        $wpdb->update(
+            $profit_table,
+            array(
+                'total_sales' => $new_total_sales,
+                'total_cost' => $new_total_cost,
+                'total_profit' => $new_total_profit,
+                'profit_margin' => $new_profit_margin,
+                'sales_count' => $new_sales_count,
+                'items_sold' => $new_items_sold
+            ),
+            array(
+                'date_period' => $date_period,
+                'period_type' => $period_type
+            ),
+            array('%f', '%f', '%f', '%f', '%d', '%d'),
+            array('%s', '%s')
+        );
+    } else {
+        // Create new record
+        $profit_margin = $sale_amount > 0 ? ($profit_amount / $sale_amount) * 100 : 0;
+        
+        $wpdb->insert(
+            $profit_table,
+            array(
+                'date_period' => $date_period,
+                'period_type' => $period_type,
+                'total_sales' => $sale_amount,
+                'total_cost' => $cost_amount,
+                'total_profit' => $profit_amount,
+                'profit_margin' => $profit_margin,
+                'sales_count' => $sales_count,
+                'items_sold' => $items_sold
+            ),
+            array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
+        );
+    }
+}
+
+function handle_get_profit_data() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('view_warehouse')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    
+    $period_type = isset($_POST['period_type']) ? sanitize_text_field($_POST['period_type']) : 'daily';
+    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
+    
+    if ($period_type === 'monthly') {
+        $date = date('Y-m-01', strtotime($date)); // First day of month
+    }
+    
+    $profit_data = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
+        $date, $period_type
+    ));
+    
+    if (!$profit_data) {
+        // Return zero data if no records found
+        $profit_data = (object) array(
+            'total_sales' => 0,
+            'total_cost' => 0,
+            'total_profit' => 0,
+            'profit_margin' => 0,
+            'sales_count' => 0,
+            'items_sold' => 0
+        );
+    }
+    
+    wp_send_json_success($profit_data);
 }
 
 function handle_get_inventory_item() {
@@ -723,6 +951,9 @@ function handle_sell_inventory_item_detailed() {
         
         // Commit transaction
         $wpdb->query('COMMIT');
+        
+        // Update profit tracking after successful sale
+        update_profit_tracking($item_id, $quantity_sold, $unit_price);
         
         wp_send_json_success(array(
             'message' => 'Sale completed successfully',
