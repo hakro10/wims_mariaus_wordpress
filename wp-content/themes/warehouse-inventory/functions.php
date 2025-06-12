@@ -327,6 +327,29 @@ add_action('wp_ajax_rebuild_profit_data', 'handle_rebuild_profit_data');
 add_action('wp_ajax_add_category', 'handle_add_category');
 add_action('wp_ajax_delete_category', 'handle_delete_category');
 add_action('wp_ajax_add_location', 'handle_add_location');
+add_action('wp_ajax_get_category_items', 'handle_get_category_items');
+
+function handle_get_category_items() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('view_warehouse')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $category_id = intval($_POST['category_id']);
+    
+    $items = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}wh_inventory_items WHERE category_id = %d",
+        $category_id
+    ));
+    
+    if ($items) {
+        wp_send_json_success($items);
+    } else {
+        wp_send_json_error('No items found for this category');
+    }
+}
 
 function handle_add_inventory_item() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -1076,7 +1099,17 @@ function get_dashboard_stats() {
 // Get all categories
 function get_all_categories() {
     global $wpdb;
-    return $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_categories ORDER BY name");
+    
+    $categories = $wpdb->get_results("
+        SELECT c.*, 
+               COUNT(i.id) as item_count
+        FROM {$wpdb->prefix}wh_categories c
+        LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON c.id = i.category_id
+        GROUP BY c.id
+        ORDER BY c.name
+    ");
+    
+    return $categories;
 }
 
 // Get all locations
