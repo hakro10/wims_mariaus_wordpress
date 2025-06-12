@@ -93,7 +93,9 @@ $locations = get_all_locations();
                                         <select name="location_id" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
                                             <option value="">Select Location</option>
                                             <?php foreach ($locations as $location): ?>
-                                                <option value="<?php echo $location->id; ?>"><?php echo esc_html($location->name); ?></option>
+                                                <option value="<?php echo $location->id; ?>" title="<?php echo esc_attr($location->full_path); ?>">
+                                                    <?php echo str_repeat('└─ ', $location->level - 1) . esc_html($location->name); ?>
+                                                </option>
                                             <?php endforeach; ?>
                                         </select>
                                     </td>
@@ -425,7 +427,7 @@ function renderInventoryGrid(items) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Location</div>
-                    <div class="detail-value">${item.location_name || 'No location'}</div>
+                    <div class="detail-value">${item.location_path || item.location_name || 'No location'}</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Tested</div>

@@ -246,11 +246,27 @@ function update_inventory_items_table_structure() {
     }
 }
 
+function update_locations_table_structure() {
+    global $wpdb;
+    
+    $locations_table = $wpdb->prefix . 'wh_locations';
+    
+    // Check if columns exist before adding them
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $locations_table");
+    $existing_columns = array_column($columns, 'Field');
+    
+    if (!in_array('code', $existing_columns)) {
+        $wpdb->query("ALTER TABLE $locations_table ADD COLUMN code VARCHAR(50) AFTER name");
+    }
+}
+
 // Run table update on theme activation and admin init
 add_action('after_switch_theme', 'update_sales_table_structure');
 add_action('admin_init', 'update_sales_table_structure');
 add_action('after_switch_theme', 'update_inventory_items_table_structure');
 add_action('admin_init', 'update_inventory_items_table_structure');
+add_action('after_switch_theme', 'update_locations_table_structure');
+add_action('admin_init', 'update_locations_table_structure');
 
 // Function to create profit tracking table
 function create_profit_tracking_table() {
@@ -499,6 +515,15 @@ function handle_get_inventory_items() {
     $sql .= " ORDER BY i.created_at DESC";
     
     $items = $wpdb->get_results($sql);
+    
+    // Add full location path to each item
+    foreach ($items as $item) {
+        if ($item->location_id) {
+            $item->location_path = get_location_path($item->location_id);
+        } else {
+            $item->location_path = '';
+        }
+    }
     
     wp_send_json_success($items);
 }
@@ -1219,10 +1244,72 @@ function get_all_categories() {
     return $categories;
 }
 
-// Get all locations
+// Get all locations with hierarchy
 function get_all_locations() {
     global $wpdb;
-    return $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER BY level, name");
+    $table = $wpdb->prefix . 'wh_locations';
+    
+    $locations = $wpdb->get_results("SELECT * FROM $table ORDER BY level ASC, name ASC");
+    
+    // Add full path and ensure code property exists
+    foreach ($locations as $location) {
+        $location->full_path = get_location_path($location->id);
+        if (!isset($location->code)) {
+            $location->code = '';
+        }
+    }
+    
+    return $locations;
+}
+
+// Get location hierarchy path
+function get_location_path($location_id, $include_self = true) {
+    global $wpdb;
+    
+    if (!$location_id) {
+        return '';
+    }
+    
+    $path = array();
+    $current_id = $location_id;
+    
+    // Build path by traversing up the hierarchy
+    while ($current_id) {
+        $location = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, name, parent_id FROM {$wpdb->prefix}wh_locations WHERE id = %d",
+            $current_id
+        ));
+        
+        if (!$location) {
+            break;
+        }
+        
+        // Add to beginning of path array
+        array_unshift($path, $location->name);
+        
+        // Move to parent
+        $current_id = $location->parent_id;
+    }
+    
+    if (!$include_self && count($path) > 0) {
+        array_pop($path); // Remove the location itself, keep only parents
+    }
+    
+    return implode(' → ', $path);
+}
+
+// Get locations organized by hierarchy level for dropdowns
+function get_locations_for_dropdown($parent_id = null, $level = 1) {
+    global $wpdb;
+    
+    $where_clause = $parent_id ? "parent_id = $parent_id" : "parent_id IS NULL";
+    
+    return $wpdb->get_results("
+        SELECT id, name, code, level, parent_id 
+        FROM {$wpdb->prefix}wh_locations 
+        WHERE $where_clause 
+        ORDER BY name
+    ");
 }
 
 // Custom user roles for warehouse management
@@ -1474,89 +1561,68 @@ function handle_delete_category() {
 function handle_add_location() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $locations_table = $wpdb->prefix . 'wh_locations';
-    
     $name = sanitize_text_field($_POST['name']);
     $code = sanitize_text_field($_POST['code']);
     $type = sanitize_text_field($_POST['type']);
-    $level = intval($_POST['level']);
     $description = sanitize_textarea_field($_POST['description']);
+    $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : null;
     
-    if (empty($name)) {
-        wp_send_json_error('Location name is required');
-        return;
-    }
+    global $wpdb;
+    $table = $wpdb->prefix . 'wh_locations';
     
-    // Check if location already exists
-    $existing = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM $locations_table WHERE name = %s",
-        $name
-    ));
-    
-    if ($existing) {
-        wp_send_json_error('Location with this name already exists');
-        return;
-    }
-    
-    // Check if code already exists (if provided)
-    if (!empty($code)) {
-        $existing_code = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $locations_table WHERE code = %s",
-            $code
-        ));
-        
-        if ($existing_code) {
-            wp_send_json_error('Location with this code already exists');
-            return;
+    // Calculate level based on parent
+    $level = 1;
+    if ($parent_id) {
+        $parent = $wpdb->get_row($wpdb->prepare("SELECT level FROM $table WHERE id = %d", $parent_id));
+        if ($parent) {
+            $level = $parent->level + 1;
         }
     }
     
+    // Generate unique code if not provided
+    if (empty($code)) {
+        $code = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name), 0, 3)) . '-' . uniqid();
+    }
+    
+    // Insert location
     $result = $wpdb->insert(
-        $locations_table,
+        $table,
         array(
             'name' => $name,
             'code' => $code,
             'type' => $type,
-            'level' => $level,
             'description' => $description,
-            'created_at' => current_time('mysql')
-        ),
-        array('%s', '%s', '%s', '%d', '%s', '%s')
+            'parent_id' => $parent_id,
+            'level' => $level
+        )
     );
     
     if ($result) {
         $location_id = $wpdb->insert_id;
         
-        // Automatically generate QR code for the new location
+        // Generate QR code
         $qr_data = json_encode([
             'type' => 'location',
             'id' => $location_id,
             'name' => $name,
-            'code' => $code ?? '',
+            'code' => $code,
             'location_type' => $type
         ]);
         
         $qr_url = generate_qr_code_url($qr_data);
         
-        // Update the location with QR code URL
+        // Update location with QR code URL
         $wpdb->update(
-            $locations_table,
+            $table,
             array('qr_code_image' => $qr_url),
-            array('id' => $location_id),
-            array('%s'),
-            array('%d')
+            array('id' => $location_id)
         );
         
-        wp_send_json_success(array(
-            'message' => 'Location added successfully',
+        wp_send_json_success([
             'id' => $location_id,
-            'qr_code' => $qr_url
-        ));
+            'qr_url' => $qr_url,
+            'message' => 'Location added successfully'
+        ]);
     } else {
         wp_send_json_error('Failed to add location');
     }
@@ -1883,4 +1949,143 @@ add_action('wp_ajax_nopriv_generate_qr_code', 'handle_generate_qr_code');
 add_action('wp_ajax_get_qr_print_data', 'handle_get_qr_print_data');
 add_action('wp_ajax_generate_all_qr_codes', 'handle_generate_all_qr_codes');
 add_action('wp_ajax_nopriv_get_qr_print_data', 'handle_get_qr_print_data');
+
+// Location management AJAX handlers
+add_action('wp_ajax_get_location_data', 'handle_get_location_data');
+add_action('wp_ajax_nopriv_get_location_data', 'handle_get_location_data');
+add_action('wp_ajax_update_location', 'handle_update_location');
+add_action('wp_ajax_nopriv_update_location', 'handle_update_location');
+add_action('wp_ajax_delete_location', 'handle_delete_location');
+add_action('wp_ajax_nopriv_delete_location', 'handle_delete_location');
+
+function handle_get_location_data() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    $location_id = intval($_POST['location_id']);
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'wh_locations';
+    
+    $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $location_id));
+    
+    if (!$location) {
+        wp_send_json_error('Location not found');
+        return;
+    }
+    
+    wp_send_json_success($location);
+}
+
+function handle_update_location() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    $location_id = intval($_POST['location_id']);
+    $name = sanitize_text_field($_POST['name']);
+    $code = sanitize_text_field($_POST['code']);
+    $type = sanitize_text_field($_POST['type']);
+    $description = sanitize_textarea_field($_POST['description']);
+    $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : null;
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'wh_locations';
+    
+    // Get current location data
+    $current = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $location_id));
+    if (!$current) {
+        wp_send_json_error('Location not found');
+        return;
+    }
+    
+    // Calculate level based on parent
+    $level = 1;
+    if ($parent_id) {
+        $parent = $wpdb->get_row($wpdb->prepare("SELECT level FROM $table WHERE id = %d", $parent_id));
+        if ($parent) {
+            $level = $parent->level + 1;
+        }
+    }
+    
+    // Update location
+    $result = $wpdb->update(
+        $table,
+        array(
+            'name' => $name,
+            'code' => $code,
+            'type' => $type,
+            'description' => $description,
+            'parent_id' => $parent_id,
+            'level' => $level
+        ),
+        array('id' => $location_id)
+    );
+    
+    if ($result !== false) {
+        // Generate QR code if not exists
+        if (empty($current->qr_code_image)) {
+            $qr_data = json_encode([
+                'type' => 'location',
+                'id' => $location_id,
+                'name' => $name,
+                'code' => $code,
+                'location_type' => $type
+            ]);
+            
+            $qr_url = generate_qr_code_url($qr_data);
+            $wpdb->update(
+                $table,
+                array('qr_code_image' => $qr_url),
+                array('id' => $location_id)
+            );
+        }
+        
+        wp_send_json_success('Location updated successfully');
+    } else {
+        wp_send_json_error('Failed to update location');
+    }
+}
+
+function handle_delete_location() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    $location_id = intval($_POST['location_id']);
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'wh_locations';
+    
+    // Check if location has child locations
+    $has_children = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $table WHERE parent_id = %d",
+        $location_id
+    ));
+    
+    if ($has_children > 0) {
+        wp_send_json_error('Cannot delete location with child locations. Please delete or move child locations first.');
+        return;
+    }
+    
+    // Check if location has items
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    $has_items = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $items_table WHERE location_id = %d",
+        $location_id
+    ));
+    
+    if ($has_items > 0) {
+        wp_send_json_error('Cannot delete location that contains items. Please move or delete items first.');
+        return;
+    }
+    
+    // Delete location
+    $result = $wpdb->delete(
+        $table,
+        array('id' => $location_id),
+        array('%d')
+    );
+    
+    if ($result !== false) {
+        wp_send_json_success('Location deleted successfully');
+    } else {
+        wp_send_json_error('Failed to delete location');
+    }
+}
 ?> 

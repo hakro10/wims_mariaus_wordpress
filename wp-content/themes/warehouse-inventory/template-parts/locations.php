@@ -22,12 +22,16 @@ $locations = get_all_locations();
                         <div class="location-info">
                             <h3><?php echo esc_html($location->name); ?></h3>
                             <span class="location-code"><?php echo esc_html($location->code ?: 'No code'); ?></span>
+                            <div class="location-path"><?php echo esc_html($location->full_path); ?></div>
                         </div>
                         <div class="location-actions">
-                            <button class="btn-icon" onclick="editLocation(<?php echo $location->id; ?>)">
+                            <button class="btn-icon" onclick="editLocation(<?php echo $location->id; ?>)" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button class="btn-icon" onclick="generateQR(<?php echo $location->id; ?>)">
+                            <button class="btn-icon" onclick="deleteLocation(<?php echo $location->id; ?>)" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <button class="btn-icon" onclick="generateQR(<?php echo $location->id; ?>)" title="Generate QR">
                                 <i class="fas fa-qrcode"></i>
                             </button>
                         </div>
@@ -64,7 +68,7 @@ $locations = get_all_locations();
 <div id="add-location-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
     <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 500px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
         <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
-            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Add New Location</h3>
+            <h3 id="modalTitle" style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Add New Location</h3>
             <button onclick="closeLocationModal()" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
         <div style="padding: 20px !important;">
@@ -73,37 +77,49 @@ $locations = get_all_locations();
                     <tr>
                         <td style="padding: 8px 0 !important; vertical-align: top !important;">
                             <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Location Name *</label>
-                            <input type="text" name="name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                            <input type="text" id="locationName" name="name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0 !important; vertical-align: top !important;">
                             <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Location Code</label>
-                            <input type="text" name="code" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                            <input type="text" id="locationCode" name="code" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0 !important; vertical-align: top !important;">
-                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Type</label>
-                            <select name="type" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
-                                <option value="warehouse">Warehouse</option>
-                                <option value="section">Section</option>
-                                <option value="aisle">Aisle</option>
-                                <option value="rack">Rack</option>
-                                <option value="shelf">Shelf</option>
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Parent Location</label>
+                            <select name="parent_id" id="parentLocation" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="">-- Root Level --</option>
+                                <?php 
+                                $all_locations = get_all_locations();
+                                foreach ($all_locations as $loc): ?>
+                                    <option value="<?php echo $loc->id; ?>" data-level="<?php echo $loc->level; ?>">
+                                        <?php echo str_repeat('└─ ', $loc->level - 1) . esc_html($loc->name); ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </td>
                     </tr>
                     <tr>
                         <td style="padding: 8px 0 !important; vertical-align: top !important;">
-                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Level</label>
-                            <input type="number" name="level" min="1" value="1" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Type</label>
+                            <select name="type" id="locationType" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="town">Town</option>
+                                <option value="warehouse">Warehouse</option>
+                                <option value="section">Section</option>
+                                <option value="aisle">Aisle</option>
+                                <option value="rack">Rack</option>
+                                <option value="shelf">Shelf</option>
+                                <option value="bin">Bin</option>
+                            </select>
                         </td>
                     </tr>
+
                     <tr>
                         <td style="padding: 8px 0 !important; vertical-align: top !important;">
                             <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Description</label>
-                            <textarea name="description" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
+                            <textarea name="description" id="locationDescription" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
                         </td>
                     </tr>
                 </table>
@@ -111,7 +127,7 @@ $locations = get_all_locations();
         </div>
         <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
             <button type="button" onclick="closeLocationModal()" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
-            <button type="button" onclick="submitAddLocation()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Add Location</button>
+            <button type="button" id="submitLocationBtn" onclick="submitAddLocation()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Add Location</button>
         </div>
     </div>
 </div>
@@ -152,6 +168,13 @@ $locations = get_all_locations();
 .location-code {
     color: #6b7280;
     font-size: 0.875rem;
+}
+
+.location-path {
+    color: #3b82f6;
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+    font-style: italic;
 }
 
 .location-actions {
@@ -202,17 +225,31 @@ $locations = get_all_locations();
 
 <script>
 function openLocationModal() {
+    resetLocationModal();
     document.getElementById('add-location-modal').style.display = 'block';
 }
 
 function closeLocationModal() {
     document.getElementById('add-location-modal').style.display = 'none';
     document.getElementById('add-location-form').reset();
+    resetLocationModal();
+}
+
+function resetLocationModal() {
+    const submitBtn = document.getElementById('submitLocationBtn');
+    const modalTitle = document.getElementById('modalTitle');
+    
+    // Reset to add mode
+    modalTitle.textContent = 'Add New Location';
+    submitBtn.textContent = 'Add Location';
+    submitBtn.removeAttribute('data-edit-id');
 }
 
 function submitAddLocation() {
     const form = document.getElementById('add-location-form');
     const formData = new FormData(form);
+    const submitBtn = document.getElementById('submitLocationBtn');
+    const editId = submitBtn.getAttribute('data-edit-id');
     
     // Validate required fields
     const name = formData.get('name');
@@ -223,14 +260,18 @@ function submitAddLocation() {
     
     // Prepare data for submission
     const submitData = new URLSearchParams({
-        action: 'add_location',
+        action: editId ? 'update_location' : 'add_location',
         nonce: warehouse_ajax.nonce,
         name: name.trim(),
         code: formData.get('code') || '',
         type: formData.get('type') || 'warehouse',
-        level: formData.get('level') || '1',
+        parent_id: formData.get('parent_id') || '',
         description: formData.get('description') || ''
     });
+    
+    if (editId) {
+        submitData.append('location_id', editId);
+    }
     
     // Submit the location
     fetch(warehouse_ajax.ajax_url, {
@@ -243,25 +284,135 @@ function submitAddLocation() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Location added successfully!');
+            alert(editId ? 'Location updated successfully!' : 'Location added successfully!');
             closeLocationModal();
-            location.reload(); // Refresh to show new location
+            location.reload(); // Refresh to show changes
         } else {
-            alert('Error adding location: ' + (data.data || 'Unknown error'));
+            alert('Error ' + (editId ? 'updating' : 'adding') + ' location: ' + (data.data || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error adding location. Please try again.');
+        alert('Error ' + (editId ? 'updating' : 'adding') + ' location. Please try again.');
     });
 }
 
 function editLocation(locationId) {
-    alert('Edit functionality coming soon! Location ID: ' + locationId);
+    // Get location data via AJAX
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=get_location_data&location_id=${locationId}&nonce=${warehouse_ajax.nonce}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            openEditLocationModal(data.data);
+        } else {
+            alert('Error fetching location data: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error fetching location data');
+    });
+}
+
+function openEditLocationModal(location) {
+    const modal = document.getElementById('add-location-modal');
+    const submitBtn = document.getElementById('submitLocationBtn');
+    const modalTitle = document.getElementById('modalTitle');
+    
+    // Change modal title and button text
+    modalTitle.textContent = 'Edit Location';
+    submitBtn.textContent = 'Update Location';
+    submitBtn.setAttribute('data-edit-id', location.id);
+    
+    // Populate form fields
+    document.getElementById('locationName').value = location.name || '';
+    document.getElementById('locationCode').value = location.code || '';
+    document.getElementById('locationDescription').value = location.description || '';
+    document.getElementById('locationType').value = location.type || '';
+    
+    // Set parent location if exists
+    const parentSelect = document.getElementById('parentLocation');
+    if (location.parent_id) {
+        parentSelect.value = location.parent_id;
+    } else {
+        parentSelect.value = '';
+    }
+    
+    modal.style.display = 'block';
+}
+
+function deleteLocation(locationId) {
+    if (!confirm('Are you sure you want to delete this location? This action cannot be undone.')) {
+        return;
+    }
+
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=delete_location&location_id=${locationId}&nonce=${warehouse_ajax.nonce}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Location deleted successfully');
+            location.reload();
+        } else {
+            alert('Error deleting location: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error deleting location');
+    });
 }
 
 function generateQR(locationId) {
-    alert('QR code generation coming soon! Location ID: ' + locationId);
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `action=generate_qr_code&type=location&id=${locationId}&nonce=${warehouse_ajax.nonce}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Open print modal with QR code
+            fetch(warehouse_ajax.ajax_url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=get_qr_print_data&type=location&id=${locationId}&nonce=${warehouse_ajax.nonce}`
+            })
+            .then(response => response.json())
+            .then(printData => {
+                if (printData.success) {
+                    openPrintModal(printData.data);
+                } else {
+                    alert('Error getting QR print data: ' + (printData.data || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error getting QR print data');
+            });
+        } else {
+            alert('Error generating QR code: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error generating QR code');
+    });
 }
 
 // Close modal when clicking outside
