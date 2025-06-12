@@ -880,7 +880,7 @@ function handle_sell_inventory_item() {
         $sales_table,
         array(
             'item_id' => $item_id,
-            'quantity' => $quantity_sold,
+            'quantity_sold' => $quantity_sold,
             'unit_price' => $item->selling_price,
             'total_amount' => $sale_amount,
             'sale_date' => current_time('mysql'),
@@ -1502,7 +1502,7 @@ function handle_add_location() {
             'type' => 'location',
             'id' => $location_id,
             'name' => $name,
-            'code' => $code,
+            'code' => $code ?? '',
             'location_type' => $type
         ]);
         
@@ -1742,9 +1742,175 @@ function generate_qr_code_url($data, $size = 200) {
     return "https://chart.googleapis.com/chart?chs={$size}x{$size}&cht=qr&chl={$encoded_data}&choe=UTF-8";
 }
 
+// Bulk QR code generation handler
+function handle_generate_all_qr_codes() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    $type = sanitize_text_field($_POST['type']);
+    
+    if (!in_array($type, ['items', 'locations'])) {
+        wp_send_json_error('Invalid type');
+        return;
+    }
+    
+    global $wpdb;
+    $generated_count = 0;
+    $updated_count = 0;
+    
+    if ($type === 'items') {
+        $table = $wpdb->prefix . 'wh_inventory_items';
+        $items = $wpdb->get_results("SELECT * FROM $table ORDER BY id");
+        
+        foreach ($items as $item) {
+            $qr_data = json_encode([
+                'type' => 'item',
+                'id' => $item->id,
+                'internal_id' => $item->internal_id,
+                'name' => $item->name,
+                'quantity' => $item->quantity
+            ]);
+            
+            $qr_url = generate_qr_code_url($qr_data);
+            
+            $result = $wpdb->update(
+                $table,
+                array('qr_code_image' => $qr_url),
+                array('id' => $item->id),
+                array('%s'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                if (empty($item->qr_code_image)) {
+                    $generated_count++;
+                } else {
+                    $updated_count++;
+                }
+            }
+        }
+        
+        wp_send_json_success(array(
+            'message' => "Generated QR codes for $generated_count items, updated $updated_count existing codes",
+            'generated' => $generated_count,
+            'updated' => $updated_count
+        ));
+        
+    } else {
+        $table = $wpdb->prefix . 'wh_locations';
+        $locations = $wpdb->get_results("SELECT * FROM $table ORDER BY id");
+        
+        foreach ($locations as $location) {
+            $qr_data = json_encode([
+                'type' => 'location',
+                'id' => $location->id,
+                'name' => $location->name,
+                'code' => $location->code ?? '',
+                'location_type' => $location->type
+            ]);
+            
+            $qr_url = generate_qr_code_url($qr_data);
+            
+            $result = $wpdb->update(
+                $table,
+                array('qr_code_image' => $qr_url),
+                array('id' => $location->id),
+                array('%s'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                if (empty($location->qr_code_image)) {
+                    $generated_count++;
+                } else {
+                    $updated_count++;
+                }
+            }
+        }
+        
+        wp_send_json_success(array(
+            'message' => "Generated QR codes for $generated_count locations, updated $updated_count existing codes",
+            'generated' => $generated_count,
+            'updated' => $updated_count
+        ));
+    }
+}
+
 // Add AJAX action hooks
 add_action('wp_ajax_generate_qr_code', 'handle_generate_qr_code');
 add_action('wp_ajax_nopriv_generate_qr_code', 'handle_generate_qr_code');
 add_action('wp_ajax_get_qr_print_data', 'handle_get_qr_print_data');
+add_action('wp_ajax_generate_all_qr_codes', 'handle_generate_all_qr_codes');
 add_action('wp_ajax_nopriv_get_qr_print_data', 'handle_get_qr_print_data');
+
+// Temporary function to generate QR codes for all existing items and locations
+function generate_all_existing_qr_codes() {
+    global $wpdb;
+    
+    // Generate QR codes for all items
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    $items = $wpdb->get_results("SELECT * FROM $items_table ORDER BY id");
+    
+    foreach ($items as $item) {
+        $qr_data = json_encode([
+            'type' => 'item',
+            'id' => $item->id,
+            'internal_id' => $item->internal_id,
+            'name' => $item->name,
+            'quantity' => $item->quantity
+        ]);
+        
+        $qr_url = generate_qr_code_url($qr_data);
+        
+        $wpdb->update(
+            $items_table,
+            array('qr_code_image' => $qr_url),
+            array('id' => $item->id),
+            array('%s'),
+            array('%d')
+        );
+    }
+    
+    // Generate QR codes for all locations
+    $locations_table = $wpdb->prefix . 'wh_locations';
+    $locations = $wpdb->get_results("SELECT * FROM $locations_table ORDER BY id");
+    
+    foreach ($locations as $location) {
+        $qr_data = json_encode([
+            'type' => 'location',
+            'id' => $location->id,
+            'name' => $location->name,
+            'code' => $location->code ?? '',
+            'location_type' => $location->type
+        ]);
+        
+        $qr_url = generate_qr_code_url($qr_data);
+        
+        $wpdb->update(
+            $locations_table,
+            array('qr_code_image' => $qr_url),
+            array('id' => $location->id),
+            array('%s'),
+            array('%d')
+        );
+    }
+}
+
+// Run this once to generate QR codes for existing items
+add_action('init', function() {
+    if (isset($_GET['generate_qr_codes']) && current_user_can('manage_options')) {
+        generate_all_existing_qr_codes();
+        wp_redirect(home_url('/?qr_generated=1'));
+        exit;
+    }
+    
+    if (isset($_GET['qr_generated'])) {
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-success"><p>QR codes generated for all items and locations!</p></div>';
+        });
+    }
+});
 ?> 

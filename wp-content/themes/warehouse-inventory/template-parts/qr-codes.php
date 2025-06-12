@@ -683,24 +683,44 @@ function generateQRCode(type, id, button) {
 }
 
 function generateBulkQRCodes(type) {
-    if (!confirm(`Generate QR codes for all ${type}s? This may take a while.`)) {
+    const typeText = type === 'item' ? 'items' : 'locations';
+    if (!confirm(`Generate QR codes for all ${typeText}? This will update all existing QR codes.`)) {
         return;
     }
     
-    const buttons = document.querySelectorAll(`.generate-qr[data-type="${type}"]`);
-    let completed = 0;
-    const total = buttons.length;
+    const button = document.getElementById(`generateAll${type === 'item' ? 'Items' : 'Locations'}`);
+    const originalText = button.textContent;
+    button.textContent = 'Generating...';
+    button.disabled = true;
     
-    buttons.forEach((button, index) => {
-        setTimeout(() => {
-            const id = button.dataset.id;
-            generateQRCode(type, id, button);
-            completed++;
-            
-            if (completed === total) {
-                alert(`All ${type} QR codes generated!`);
-            }
-        }, index * 500); // Stagger requests
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'generate_all_qr_codes',
+            nonce: warehouse_ajax.nonce,
+            type: typeText
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.data.message);
+            // Refresh the page to show updated QR codes
+            window.location.reload();
+        } else {
+            alert('Error generating QR codes: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error generating QR codes. Please try again.');
+    })
+    .finally(() => {
+        button.textContent = originalText;
+        button.disabled = false;
     });
 }
 
