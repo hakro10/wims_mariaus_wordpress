@@ -180,6 +180,12 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
             <button class="btn btn-warning" onclick="rebuildProfitData()" style="background: #f59e0b; border-color: #f59e0b;">
                 <i class="fas fa-tools"></i> Fix Profit Dates
             </button>
+            <button class="btn btn-info" onclick="fixPurchasePrices()" style="background: #3b82f6; border-color: #3b82f6;">
+                <i class="fas fa-dollar-sign"></i> Fix Purchase Prices
+            </button>
+            <button class="btn btn-secondary" onclick="debugProfitData()" style="background: #6b7280; border-color: #6b7280;">
+                <i class="fas fa-bug"></i> Debug Profit
+            </button>
             <?php endif; ?>
         </div>
     </div>
@@ -1117,6 +1123,7 @@ function switchProfitPeriod(period) {
 
 function loadProfitData() {
     const date = document.getElementById('profit-date').value;
+    console.log('Loading profit data for date:', date, 'period:', currentProfitPeriod);
     
     fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
@@ -1132,6 +1139,7 @@ function loadProfitData() {
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Profit data response:', data);
         if (data.success) {
             updateProfitDisplay(data.data);
         } else {
@@ -1158,7 +1166,7 @@ function updateProfitDisplay(data) {
     // Update details
     document.getElementById('profit-sales').textContent = formatCurrency(data.total_sales);
     document.getElementById('profit-cost').textContent = formatCurrency(data.total_cost);
-    document.getElementById('profit-margin').textContent = (data.profit_margin || 0).toFixed(1) + '%';
+    document.getElementById('profit-margin').textContent = (parseFloat(data.profit_margin) || 0).toFixed(1) + '%';
     
     // Update label
     const label = currentProfitPeriod === 'daily' ? 'Daily Profit' : 'Monthly Profit';
@@ -1179,4 +1187,104 @@ function updateProfitDisplay(data) {
 document.addEventListener('DOMContentLoaded', function() {
     loadProfitData();
 });
+
+// Rebuild profit data function
+function rebuildProfitData() {
+    if (!confirm('This will recalculate all profit data from existing sales. Continue?')) {
+        return;
+    }
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'rebuild_profit_data',
+            nonce: warehouse_ajax.nonce
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Profit data rebuilt successfully!');
+            // Force refresh the profit display with a small delay
+            setTimeout(() => {
+                loadProfitData();
+            }, 500);
+        } else {
+            alert('Error rebuilding profit data: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error rebuilding profit data. Please try again.');
+    });
+}
+
+// Fix purchase prices function
+function fixPurchasePrices() {
+    if (!confirm('This will set purchase prices to 70% of selling price for items that don\'t have purchase prices. Continue?')) {
+        return;
+    }
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'fix_purchase_prices',
+            nonce: warehouse_ajax.nonce
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.data);
+            loadProfitData(); // Refresh profit display
+        } else {
+            alert('Error fixing purchase prices: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error fixing purchase prices. Please try again.');
+    });
+}
+
+// Debug profit data function
+function debugProfitData() {
+    const date = document.getElementById('profit-date').value;
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'debug_profit_data',
+            nonce: warehouse_ajax.nonce,
+            period_type: currentProfitPeriod,
+            date: date
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Profit Debug Data:', data.data);
+            alert('Debug data logged to console. Check browser console for details.\n\n' +
+                  'Sales: $' + (data.data.total_sales || 0) + '\n' +
+                  'Cost: $' + (data.data.total_cost || 0) + '\n' +
+                  'Profit: $' + (data.data.total_profit || 0) + '\n' +
+                  'Margin: ' + (data.data.profit_margin || 0) + '%');
+        } else {
+            alert('Error debugging profit data: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error debugging profit data. Please try again.');
+    });
+}
 </script> 

@@ -328,6 +328,8 @@ add_action('wp_ajax_add_category', 'handle_add_category');
 add_action('wp_ajax_delete_category', 'handle_delete_category');
 add_action('wp_ajax_add_location', 'handle_add_location');
 add_action('wp_ajax_get_category_items', 'handle_get_category_items');
+add_action('wp_ajax_fix_purchase_prices', 'handle_fix_purchase_prices');
+add_action('wp_ajax_debug_profit_data', 'handle_debug_profit_data');
 
 function handle_get_category_items() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -570,7 +572,10 @@ function update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_dat
         $item_id
     ));
     
+    error_log("Profit tracking debug - Item ID: $item_id, Item data: " . print_r($item, true));
+    
     if (!$item || !$item->purchase_price) {
+        error_log("Profit tracking skipped - No item found or no purchase price. Item: " . print_r($item, true));
         return; // Can't calculate profit without cost price
     }
     
@@ -578,6 +583,8 @@ function update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_dat
     $sale_amount = $quantity_sold * $unit_price;
     $cost_amount = $quantity_sold * $cost_price;
     $profit_amount = $sale_amount - $cost_amount;
+    
+    error_log("Profit calculation - Sale: $sale_amount, Cost: $cost_amount, Profit: $profit_amount");
     
     // Use provided sale date or current date - ensure consistent timezone handling
     if ($sale_date) {
@@ -608,6 +615,8 @@ function update_profit_record($date_period, $period_type, $sale_amount, $cost_am
     global $wpdb;
     $profit_table = $wpdb->prefix . 'wh_profit_tracking';
     
+    error_log("Update profit record - Period: $date_period, Type: $period_type, Sale: $sale_amount, Cost: $cost_amount, Profit: $profit_amount");
+    
     // Check if record exists
     $existing = $wpdb->get_row($wpdb->prepare(
         "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
@@ -623,7 +632,9 @@ function update_profit_record($date_period, $period_type, $sale_amount, $cost_am
         $new_items_sold = $existing->items_sold + $items_sold;
         $new_profit_margin = $new_total_sales > 0 ? ($new_total_profit / $new_total_sales) * 100 : 0;
         
-        $wpdb->update(
+        error_log("Updating existing record - New Sales: $new_total_sales, New Cost: $new_total_cost, New Profit: $new_total_profit, New Margin: $new_profit_margin");
+        
+        $result = $wpdb->update(
             $profit_table,
             array(
                 'total_sales' => $new_total_sales,
@@ -640,11 +651,15 @@ function update_profit_record($date_period, $period_type, $sale_amount, $cost_am
             array('%f', '%f', '%f', '%f', '%d', '%d'),
             array('%s', '%s')
         );
+        
+        error_log("Update result: " . ($result !== false ? 'Success' : 'Failed - ' . $wpdb->last_error));
     } else {
         // Create new record
         $profit_margin = $sale_amount > 0 ? ($profit_amount / $sale_amount) * 100 : 0;
         
-        $wpdb->insert(
+        error_log("Creating new record - Sales: $sale_amount, Cost: $cost_amount, Profit: $profit_amount, Margin: $profit_margin");
+        
+        $result = $wpdb->insert(
             $profit_table,
             array(
                 'date_period' => $date_period,
@@ -658,6 +673,8 @@ function update_profit_record($date_period, $period_type, $sale_amount, $cost_am
             ),
             array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
         );
+        
+        error_log("Insert result: " . ($result !== false ? 'Success' : 'Failed - ' . $wpdb->last_error));
     }
 }
 
@@ -678,10 +695,14 @@ function handle_get_profit_data() {
         $date = date('Y-m-01', strtotime($date)); // First day of month
     }
     
+    error_log("Get profit data - Requested date: $date, Period: $period_type");
+    
     $profit_data = $wpdb->get_row($wpdb->prepare(
         "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
         $date, $period_type
     ));
+    
+    error_log("Query result: " . print_r($profit_data, true));
     
     if (!$profit_data) {
         // Return zero data if no records found
@@ -693,6 +714,7 @@ function handle_get_profit_data() {
             'sales_count' => 0,
             'items_sold' => 0
         );
+        error_log("No profit data found, returning zeros");
     }
     
     wp_send_json_success($profit_data);
@@ -1427,5 +1449,83 @@ function handle_add_location() {
     } else {
         wp_send_json_error('Failed to add location');
     }
+}
+
+function handle_fix_purchase_prices() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    
+    // Get all items with null or zero purchase prices
+    $items = $wpdb->get_results("
+        SELECT id, quantity, selling_price
+        FROM $items_table
+        WHERE purchase_price IS NULL OR purchase_price = 0
+    ");
+    
+    $updated_count = 0;
+    foreach ($items as $item) {
+        if ($item->selling_price > 0) {
+            // Set purchase price to 70% of selling price as a reasonable default
+            $purchase_price = $item->selling_price * 0.7;
+            $result = $wpdb->update(
+                $items_table,
+                array(
+                    'purchase_price' => $purchase_price
+                ),
+                array('id' => $item->id),
+                array('%f'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                $updated_count++;
+            }
+        }
+    }
+    
+    wp_send_json_success("Updated purchase prices for $updated_count items");
+}
+
+function handle_debug_profit_data() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    
+    $period_type = isset($_POST['period_type']) ? sanitize_text_field($_POST['period_type']) : 'daily';
+    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
+    
+    if ($period_type === 'monthly') {
+        $date = date('Y-m-01', strtotime($date)); // First day of month
+    }
+    
+    $profit_data = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
+        $date, $period_type
+    ));
+    
+    if (!$profit_data) {
+        // Return zero data if no records found
+        $profit_data = (object) array(
+            'total_sales' => 0,
+            'total_cost' => 0,
+            'total_profit' => 0,
+            'profit_margin' => 0,
+            'sales_count' => 0,
+            'items_sold' => 0
+        );
+    }
+    
+    wp_send_json_success($profit_data);
 }
 ?> 
