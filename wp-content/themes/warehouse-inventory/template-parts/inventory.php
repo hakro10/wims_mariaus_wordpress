@@ -520,10 +520,10 @@ function sellItem(itemId) {
     // Get item details first
     const formData = new FormData();
     formData.append('action', 'get_inventory_item');
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     formData.append('item_id', itemId);
     
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
@@ -607,10 +607,18 @@ function calculateTotal() {
 
 // Submit sell form
 function submitSellForm() {
+    console.log('Submit sell form called');
+    
     const form = document.getElementById('sell-item-form');
     const formData = new FormData(form);
     
-    // Validate required fields with better debugging
+    // Log all form data for debugging
+    console.log('Form data entries:');
+    for (let [key, value] of formData.entries()) {
+        console.log(`${key}: ${value}`);
+    }
+    
+    // Validate required fields
     const buyerName = formData.get('buyer_name')?.trim();
     const buyerPhone = formData.get('buyer_phone')?.trim();
     const quantity = formData.get('quantity');
@@ -650,7 +658,7 @@ function submitSellForm() {
     
     // Add action and nonce
     formData.append('action', 'sell_inventory_item_detailed');
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     
     // Disable submit button
     const submitBtn = document.getElementById('sell-modal-submit-btn');
@@ -660,7 +668,7 @@ function submitSellForm() {
     
     console.log('Submitting sale with data:', Object.fromEntries(formData));
     
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
@@ -682,6 +690,10 @@ function submitSellForm() {
             alert('Sale completed successfully!\nSale Number: ' + data.data.sale_number);
             closeSellModal();
             loadInventoryItems(); // Refresh the grid
+            // Refresh profit data if on sales page
+            if (typeof loadProfitData === 'function') {
+                loadProfitData();
+            }
         } else {
             console.error('Sale failed:', data);
             alert('Error: ' + (data.data || data.message || 'Failed to complete sale'));
@@ -711,10 +723,10 @@ function deleteItem(itemId) {
     if (confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
         const formData = new FormData();
         formData.append('action', 'delete_inventory_item');
-        formData.append('nonce', warehouseAjax.nonce);
+        formData.append('nonce', warehouse_ajax.nonce);
         formData.append('item_id', itemId);
         
-        fetch(warehouseAjax.ajax_url, {
+        fetch(warehouse_ajax.ajax_url, {
             method: 'POST',
             body: formData
         })

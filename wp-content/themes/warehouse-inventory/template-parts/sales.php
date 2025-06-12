@@ -173,8 +173,14 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
                 <i class="fas fa-download"></i> Export Sales
             </button>
             <button class="btn btn-secondary" onclick="refreshSales()">
-                <i class="fas fa-refresh"></i> Refresh
+                <i class="fas fa-sync-alt"></i> Refresh
             </button>
+            
+            <?php if (current_user_can('manage_options')): ?>
+            <button class="btn btn-warning" onclick="rebuildProfitData()" style="background: #f59e0b; border-color: #f59e0b;">
+                <i class="fas fa-tools"></i> Fix Profit Dates
+            </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -815,6 +821,36 @@ function refreshSales() {
     location.reload();
 }
 
+function rebuildProfitData() {
+    if (!confirm('This will rebuild all profit data from existing sales. Continue?')) {
+        return;
+    }
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+            action: 'rebuild_profit_data',
+            nonce: warehouse_ajax.nonce
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Profit data rebuilt successfully!');
+            loadProfitData(); // Refresh profit display
+        } else {
+            alert('Error rebuilding profit data: ' + (data.data || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error rebuilding profit data');
+    });
+}
+
 function exportSales() {
     // Placeholder for export functionality
     alert('Export functionality coming soon!');
@@ -826,14 +862,14 @@ function viewSaleDetails(saleId) {
     document.getElementById('sale-details-modal').style.display = 'flex';
     
     // Fetch sale details via AJAX
-    fetch(warehouseAjax.ajaxurl, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
             action: 'get_sale_details',
-            nonce: warehouseAjax.nonce,
+            nonce: warehouse_ajax.nonce,
             sale_id: saleId
         })
     })
@@ -953,14 +989,14 @@ function closeRecordSaleModal() {
 
 function loadInventoryItems() {
     // Load inventory items for the dropdown
-    fetch(warehouseAjax.ajaxurl, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
             action: 'get_inventory_items',
-            nonce: warehouseAjax.nonce
+            nonce: warehouse_ajax.nonce
         })
     })
     .then(response => response.json())
@@ -970,9 +1006,11 @@ function loadInventoryItems() {
             select.innerHTML = '<option value="">Select Item</option>';
             data.data.forEach(item => {
                 if (item.quantity > 0) {
-                    select.innerHTML += `<option value="${item.id}" data-price="${item.selling_price}">${item.name} (Stock: ${item.quantity})</option>`;
+                    select.innerHTML += `<option value="${item.id}" data-price="${item.selling_price}" data-purchase-price="${item.purchase_price}">${item.name} (Stock: ${item.quantity})</option>`;
                 }
             });
+        } else {
+            console.error('Failed to load inventory items:', data);
         }
     })
     .catch(error => {
@@ -997,7 +1035,7 @@ function submitRecordSale() {
     // Prepare data for submission
     const submitData = new URLSearchParams({
         action: 'record_sale',
-        nonce: warehouseAjax.nonce,
+        nonce: warehouse_ajax.nonce,
         item_id: itemId,
         quantity: quantity,
         unit_price: unitPrice,
@@ -1008,7 +1046,7 @@ function submitRecordSale() {
     });
     
     // Submit the sale
-    fetch(warehouseAjax.ajaxurl, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -1020,6 +1058,7 @@ function submitRecordSale() {
         if (data.success) {
             alert('Sale recorded successfully!');
             closeRecordSaleModal();
+            loadProfitData(); // Refresh profit data
             location.reload(); // Refresh to show new sale
         } else {
             alert('Error recording sale: ' + (data.data || 'Unknown error'));
@@ -1079,14 +1118,14 @@ function switchProfitPeriod(period) {
 function loadProfitData() {
     const date = document.getElementById('profit-date').value;
     
-    fetch(warehouseAjax.ajaxurl, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
             action: 'get_profit_data',
-            nonce: warehouseAjax.nonce,
+            nonce: warehouse_ajax.nonce,
             period_type: currentProfitPeriod,
             date: date
         })

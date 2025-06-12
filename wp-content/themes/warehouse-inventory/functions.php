@@ -252,6 +252,7 @@ function create_profit_tracking_table() {
 // Run profit table creation
 add_action('after_switch_theme', 'create_profit_tracking_table');
 add_action('admin_init', 'create_profit_tracking_table');
+add_action('admin_init', 'populate_sample_profit_data');
 
 // Function to populate sample profit data (for testing)
 function populate_sample_profit_data() {
@@ -311,9 +312,6 @@ function populate_sample_profit_data() {
     );
 }
 
-// Populate sample data on theme activation (for testing)
-add_action('after_switch_theme', 'populate_sample_profit_data');
-
 // AJAX handlers for inventory operations
 add_action('wp_ajax_add_inventory_item', 'handle_add_inventory_item');
 add_action('wp_ajax_update_inventory_item', 'handle_update_inventory_item');
@@ -325,6 +323,10 @@ add_action('wp_ajax_get_inventory_items', 'handle_get_inventory_items');
 add_action('wp_ajax_get_sale_details', 'handle_get_sale_details');
 add_action('wp_ajax_record_sale', 'handle_record_sale');
 add_action('wp_ajax_get_profit_data', 'handle_get_profit_data');
+add_action('wp_ajax_rebuild_profit_data', 'handle_rebuild_profit_data');
+add_action('wp_ajax_add_category', 'handle_add_category');
+add_action('wp_ajax_delete_category', 'handle_delete_category');
+add_action('wp_ajax_add_location', 'handle_add_location');
 
 function handle_add_inventory_item() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -519,8 +521,9 @@ function handle_record_sale() {
         // Commit transaction
         $wpdb->query('COMMIT');
         
-        // Update profit tracking after successful sale
-        update_profit_tracking($item_id, $quantity_sold, $unit_price);
+        // Update profit tracking after successful sale - use current time for consistency
+        $sale_date = current_time('mysql');
+        update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date);
         
         wp_send_json_success(array(
             'sale_number' => $sale_number,
@@ -535,7 +538,7 @@ function handle_record_sale() {
 }
 
 // Function to update profit tracking
-function update_profit_tracking($item_id, $quantity_sold, $unit_price) {
+function update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date = null) {
     global $wpdb;
     
     // Get item cost price
@@ -553,8 +556,23 @@ function update_profit_tracking($item_id, $quantity_sold, $unit_price) {
     $cost_amount = $quantity_sold * $cost_price;
     $profit_amount = $sale_amount - $cost_amount;
     
-    $today = current_time('Y-m-d');
-    $this_month = current_time('Y-m-01');
+    // Use provided sale date or current date - ensure consistent timezone handling
+    if ($sale_date) {
+        // Convert to WordPress timezone
+        $sale_date_obj = new DateTime($sale_date, new DateTimeZone('UTC'));
+        $sale_date_obj->setTimezone(new DateTimeZone(wp_timezone_string()));
+        $today = $sale_date_obj->format('Y-m-d');
+        $this_month = $sale_date_obj->format('Y-m-01');
+        
+        // Debug logging
+        error_log("Profit tracking - Sale date: $sale_date, Converted to: $today, Month: $this_month");
+    } else {
+        $today = current_time('Y-m-d');
+        $this_month = current_time('Y-m-01');
+        
+        // Debug logging
+        error_log("Profit tracking - Using current time: $today, Month: $this_month");
+    }
     
     // Update daily profit
     update_profit_record($today, 'daily', $sale_amount, $cost_amount, $profit_amount, 1, $quantity_sold);
@@ -952,8 +970,8 @@ function handle_sell_inventory_item_detailed() {
         // Commit transaction
         $wpdb->query('COMMIT');
         
-        // Update profit tracking after successful sale
-        update_profit_tracking($item_id, $quantity_sold, $unit_price);
+        // Update profit tracking after successful sale - use the actual sale date
+        update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date_mysql);
         
         wp_send_json_success(array(
             'message' => 'Sale completed successfully',
@@ -1186,4 +1204,195 @@ function restrict_warehouse_access() {
     }
 }
 add_action('template_redirect', 'restrict_warehouse_access');
+
+// Function to rebuild profit data from existing sales (for fixing timezone issues)
+function rebuild_profit_data() {
+    global $wpdb;
+    
+    // Clear existing profit data
+    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
+    $wpdb->query("DELETE FROM $profit_table");
+    
+    // Get all sales with item purchase prices
+    $sales = $wpdb->get_results("
+        SELECT s.*, i.purchase_price 
+        FROM {$wpdb->prefix}wh_sales s
+        LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+        WHERE i.purchase_price IS NOT NULL AND i.purchase_price > 0
+        ORDER BY s.sale_date ASC
+    ");
+    
+    foreach ($sales as $sale) {
+        // Recalculate profit for each sale using the correct sale date
+        update_profit_tracking($sale->item_id, $sale->quantity_sold, $sale->unit_price, $sale->sale_date);
+    }
+    
+    error_log("Rebuilt profit data for " . count($sales) . " sales");
+}
+
+// Add AJAX handler for rebuilding profit data
+add_action('wp_ajax_rebuild_profit_data', 'handle_rebuild_profit_data');
+
+function handle_rebuild_profit_data() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Unauthorized');
+    }
+    
+    rebuild_profit_data();
+    wp_send_json_success('Profit data rebuilt successfully');
+}
+
+// Category management handlers
+function handle_add_category() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $categories_table = $wpdb->prefix . 'wh_categories';
+    
+    $name = sanitize_text_field($_POST['name']);
+    $description = sanitize_textarea_field($_POST['description']);
+    $color = sanitize_text_field($_POST['color']);
+    
+    if (empty($name)) {
+        wp_send_json_error('Category name is required');
+        return;
+    }
+    
+    // Check if category already exists
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM $categories_table WHERE name = %s",
+        $name
+    ));
+    
+    if ($existing) {
+        wp_send_json_error('Category with this name already exists');
+        return;
+    }
+    
+    $result = $wpdb->insert(
+        $categories_table,
+        array(
+            'name' => $name,
+            'description' => $description,
+            'color' => $color,
+            'created_at' => current_time('mysql')
+        ),
+        array('%s', '%s', '%s', '%s')
+    );
+    
+    if ($result) {
+        wp_send_json_success('Category added successfully');
+    } else {
+        wp_send_json_error('Failed to add category');
+    }
+}
+
+function handle_delete_category() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('delete_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $categories_table = $wpdb->prefix . 'wh_categories';
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    
+    $category_id = intval($_POST['category_id']);
+    
+    // Check if category has items
+    $item_count = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $items_table WHERE category_id = %d",
+        $category_id
+    ));
+    
+    if ($item_count > 0) {
+        wp_send_json_error("Cannot delete category. It contains $item_count items.");
+        return;
+    }
+    
+    $result = $wpdb->delete(
+        $categories_table,
+        array('id' => $category_id),
+        array('%d')
+    );
+    
+    if ($result) {
+        wp_send_json_success('Category deleted successfully');
+    } else {
+        wp_send_json_error('Failed to delete category');
+    }
+}
+
+// Location management handlers
+function handle_add_location() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    global $wpdb;
+    $locations_table = $wpdb->prefix . 'wh_locations';
+    
+    $name = sanitize_text_field($_POST['name']);
+    $code = sanitize_text_field($_POST['code']);
+    $type = sanitize_text_field($_POST['type']);
+    $level = intval($_POST['level']);
+    $description = sanitize_textarea_field($_POST['description']);
+    
+    if (empty($name)) {
+        wp_send_json_error('Location name is required');
+        return;
+    }
+    
+    // Check if location already exists
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM $locations_table WHERE name = %s",
+        $name
+    ));
+    
+    if ($existing) {
+        wp_send_json_error('Location with this name already exists');
+        return;
+    }
+    
+    // Check if code already exists (if provided)
+    if (!empty($code)) {
+        $existing_code = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $locations_table WHERE code = %s",
+            $code
+        ));
+        
+        if ($existing_code) {
+            wp_send_json_error('Location with this code already exists');
+            return;
+        }
+    }
+    
+    $result = $wpdb->insert(
+        $locations_table,
+        array(
+            'name' => $name,
+            'code' => $code,
+            'type' => $type,
+            'level' => $level,
+            'description' => $description,
+            'created_at' => current_time('mysql')
+        ),
+        array('%s', '%s', '%s', '%d', '%s', '%s')
+    );
+    
+    if ($result) {
+        wp_send_json_success('Location added successfully');
+    } else {
+        wp_send_json_error('Failed to add location');
+    }
+}
 ?> 
