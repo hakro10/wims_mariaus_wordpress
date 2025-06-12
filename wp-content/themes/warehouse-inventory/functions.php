@@ -417,7 +417,29 @@ function handle_add_inventory_item() {
     );
     
     if ($result) {
-        wp_send_json_success(array('id' => $wpdb->insert_id));
+        $item_id = $wpdb->insert_id;
+        
+        // Automatically generate QR code for the new item
+        $qr_data = json_encode([
+            'type' => 'item',
+            'id' => $item_id,
+            'internal_id' => $internal_id,
+            'name' => $name,
+            'quantity' => $quantity
+        ]);
+        
+        $qr_url = generate_qr_code_url($qr_data);
+        
+        // Update the item with QR code URL
+        $wpdb->update(
+            $table_name,
+            array('qr_code_image' => $qr_url),
+            array('id' => $item_id),
+            array('%s'),
+            array('%d')
+        );
+        
+        wp_send_json_success(array('id' => $item_id, 'qr_code' => $qr_url));
     } else {
         wp_send_json_error('Failed to add item');
     }
@@ -1473,7 +1495,33 @@ function handle_add_location() {
     );
     
     if ($result) {
-        wp_send_json_success('Location added successfully');
+        $location_id = $wpdb->insert_id;
+        
+        // Automatically generate QR code for the new location
+        $qr_data = json_encode([
+            'type' => 'location',
+            'id' => $location_id,
+            'name' => $name,
+            'code' => $code,
+            'location_type' => $type
+        ]);
+        
+        $qr_url = generate_qr_code_url($qr_data);
+        
+        // Update the location with QR code URL
+        $wpdb->update(
+            $locations_table,
+            array('qr_code_image' => $qr_url),
+            array('id' => $location_id),
+            array('%s'),
+            array('%d')
+        );
+        
+        wp_send_json_success(array(
+            'message' => 'Location added successfully',
+            'id' => $location_id,
+            'qr_code' => $qr_url
+        ));
     } else {
         wp_send_json_error('Failed to add location');
     }
