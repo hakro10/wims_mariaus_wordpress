@@ -42,6 +42,31 @@ function warehouse_inventory_scripts() {
 }
 add_action('wp_enqueue_scripts', 'warehouse_inventory_scripts');
 
+// Redirect users to warehouse dashboard after login
+function warehouse_login_redirect($redirect_to, $request, $user) {
+    // Check if user has errors (failed login)
+    if (isset($user->errors) && !empty($user->errors)) {
+        return $redirect_to;
+    }
+    
+    // Check if user has warehouse access capabilities
+    if (isset($user->ID) && (
+        user_can($user->ID, 'manage_warehouse') || 
+        user_can($user->ID, 'view_warehouse') || 
+        user_can($user->ID, 'manage_options') ||
+        in_array('administrator', $user->roles) ||
+        in_array('warehouse_manager', $user->roles) ||
+        in_array('warehouse_staff', $user->roles)
+    )) {
+        // Redirect to warehouse dashboard
+        return home_url('/?tab=dashboard');
+    }
+    
+    // For other users, use default redirect
+    return $redirect_to;
+}
+add_filter('login_redirect', 'warehouse_login_redirect', 10, 3);
+
 // Create custom database tables on theme activation
 function warehouse_inventory_create_tables() {
     global $wpdb;
