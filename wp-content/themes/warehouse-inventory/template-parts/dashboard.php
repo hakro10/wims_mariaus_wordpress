@@ -78,18 +78,18 @@ $stats = get_dashboard_stats();
     <div class="quick-actions">
         <h2>Quick Actions</h2>
         <div class="action-buttons">
-            <button class="btn btn-primary" onclick="openModal('add-item-modal')">
+            <button class="btn btn-primary" onclick="navigateToTab('inventory')">
                 <i class="fas fa-plus"></i> Add New Item
             </button>
-            <button class="btn btn-secondary" onclick="openModal('add-category-modal')">
+            <button class="btn btn-secondary" onclick="navigateToTab('categories')">
                 <i class="fas fa-tag"></i> Add Category
             </button>
-            <button class="btn btn-secondary" onclick="openModal('add-location-modal')">
+            <button class="btn btn-secondary" onclick="navigateToTab('locations')">
                 <i class="fas fa-map-marker-alt"></i> Add Location
             </button>
-            <a href="?tab=inventory" class="btn btn-secondary">
+            <button class="btn btn-secondary" onclick="navigateToTab('inventory')">
                 <i class="fas fa-eye"></i> View All Items
-            </a>
+            </button>
         </div>
     </div>
 
@@ -167,7 +167,7 @@ $stats = get_dashboard_stats();
                 <i class="fas fa-boxes" style="font-size: 4rem; color: #d1d5db; margin-bottom: 1rem;"></i>
                 <h3>No items yet</h3>
                 <p>Start by adding your first inventory item.</p>
-                <button class="btn btn-primary" onclick="openModal('add-item-modal')">
+                <button class="btn btn-primary" onclick="navigateToTab('inventory')">
                     <i class="fas fa-plus"></i> Add First Item
                 </button>
             </div>
@@ -298,4 +298,106 @@ $stats = get_dashboard_stats();
     padding: 0.375rem 0.75rem;
     font-size: 0.8125rem;
 }
-</style> 
+</style>
+
+<script>
+// Quick Actions Functions
+function navigateToTab(tab) {
+    console.log('Navigating to tab:', tab);
+    window.location.href = '?tab=' + tab;
+}
+
+function openModal(modalId) {
+    switch(modalId) {
+        case 'add-item-modal':
+            window.location.href = '?tab=inventory';
+            break;
+        case 'add-category-modal':
+            window.location.href = '?tab=categories';
+            break;
+        case 'add-location-modal':
+            window.location.href = '?tab=locations';
+            break;
+        default:
+            console.log('Modal not found:', modalId);
+    }
+}
+
+// Item action functions
+function editItem(itemId) {
+    window.location.href = '?tab=inventory&action=edit&item_id=' + itemId;
+}
+
+function sellItem(itemId) {
+    window.location.href = '?tab=inventory&action=sell&item_id=' + itemId;
+}
+
+function restockItem(itemId) {
+    const quantity = prompt('Enter quantity to add to stock:');
+    if (quantity && !isNaN(quantity) && parseInt(quantity) > 0) {
+        // Get current item details first
+        fetch(warehouse_ajax.ajax_url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                action: 'get_inventory_item',
+                nonce: warehouse_ajax.nonce,
+                item_id: itemId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const item = data.data;
+                const newQuantity = parseInt(item.quantity) + parseInt(quantity);
+                
+                // Update the item with new quantity
+                const updateData = new URLSearchParams({
+                    action: 'update_inventory_item',
+                    nonce: warehouse_ajax.nonce,
+                    item_id: itemId,
+                    name: item.name,
+                    internal_id: item.internal_id,
+                    description: item.description,
+                    category_id: item.category_id,
+                    location_id: item.location_id,
+                    quantity: newQuantity,
+                    purchase_price: item.purchase_price,
+                    selling_price: item.selling_price,
+                    min_stock_level: item.min_stock_level
+                });
+                
+                return fetch(warehouse_ajax.ajax_url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: updateData
+                });
+            } else {
+                throw new Error('Failed to get item details');
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Stock updated successfully! Added ' + quantity + ' items.');
+                location.reload();
+            } else {
+                alert('Error updating stock: ' + (data.data || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating stock. Please try again.');
+        });
+    }
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard loaded');
+});
+</script> 
