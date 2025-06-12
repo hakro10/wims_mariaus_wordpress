@@ -755,4 +755,193 @@ body {
     .form-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* Enhanced Mobile Optimizations */
+@media (max-width: 768px) {
+    /* Enhanced navigation for mobile */
+    .nav-tabs {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding-bottom: 5px;
+    }
+
+    .nav-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .nav-tab {
+        white-space: nowrap;
+        min-width: 120px;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+
+    /* Mobile-friendly buttons */
+    .btn {
+        min-height: 44px;
+        padding: 12px 16px;
+        font-size: 14px;
+    }
+
+    .btn-icon {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+    }
+
+    /* Modal improvements for mobile */
+    .modal-overlay {
+        padding: 10px;
+    }
+
+    .modal {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        border-radius: 12px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    /* Touch-friendly form elements */
+    .form-input, .form-select {
+        min-height: 44px;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    /* QR Code mobile optimizations */
+    .qr-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .qr-card-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .qr-card-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .scanner-controls {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .scanner-controls .btn {
+        width: 100%;
+    }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+    .container {
+        padding: 0 5px;
+    }
+
+    .nav-tab {
+        min-width: 100px;
+        padding: 8px 12px;
+        font-size: 12px;
+    }
+
+    .stat-card {
+        padding: 0.75rem;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .inventory-item {
+        padding: 0.75rem;
+    }
+
+    .item-info h3 {
+        font-size: 1rem;
+    }
+
+    .btn {
+        min-height: 40px;
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .btn-icon {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+    }
+
+    .qr-code-image {
+        max-width: 80px;
+        max-height: 80px;
+    }
+
+    .scanner-frame {
+        width: 120px;
+        height: 120px;
+    }
+}
+
+/* Landscape mobile optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .dashboard-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .inventory-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .qr-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .inventory-item:hover {
+        transform: none;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-icon:hover {
+        background: white;
+    }
+
+    .nav-tab:hover {
+        color: #6b7280;
+    }
+
+    /* Larger touch targets */
+    .btn, .btn-icon, .nav-tab {
+        min-height: 44px;
+    }
+
+    /* Remove hover effects that don't work on touch */
+    .qr-card:hover {
+        border-color: #e5e7eb;
+        box-shadow: none;
+    }
+}
+
+/* PWA and mobile app styles */
+@media (display-mode: standalone) {
+    .warehouse-header {
+        padding-top: env(safe-area-inset-top);
+    }
+    
+    body {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
 } 

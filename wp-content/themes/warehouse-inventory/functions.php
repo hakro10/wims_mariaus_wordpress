@@ -34,6 +34,9 @@ function warehouse_inventory_scripts() {
     wp_enqueue_style('warehouse-inventory-style', get_stylesheet_uri(), array(), '1.0.0');
     wp_enqueue_script('warehouse-inventory-script', get_template_directory_uri() . '/assets/js/warehouse.js', array('jquery'), '1.0.0', true);
     
+    // Enqueue QR scanner for mobile optimization
+    wp_enqueue_script('warehouse-qr-scanner', get_template_directory_uri() . '/assets/js/qr-scanner.js', array(), '1.0.0', true);
+    
     // Localize script for AJAX
     wp_localize_script('warehouse-inventory-script', 'warehouse_ajax', array(
         'ajax_url' => admin_url('admin-ajax.php'),
@@ -1553,4 +1556,147 @@ function handle_debug_profit_data() {
     
     wp_send_json_success($profit_data);
 }
+
+// QR Code generation handlers
+function handle_generate_qr_code() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_inventory')) {
+        wp_die('Unauthorized');
+    }
+    
+    $type = sanitize_text_field($_POST['type']);
+    $id = intval($_POST['id']);
+    
+    if (!in_array($type, ['item', 'location'])) {
+        wp_send_json_error('Invalid type');
+        return;
+    }
+    
+    global $wpdb;
+    
+    if ($type === 'item') {
+        $table = $wpdb->prefix . 'wh_inventory_items';
+        $item = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
+        
+        if (!$item) {
+            wp_send_json_error('Item not found');
+            return;
+        }
+        
+        $qr_data = json_encode([
+            'type' => 'item',
+            'id' => $item->id,
+            'internal_id' => $item->internal_id,
+            'name' => $item->name,
+            'quantity' => $item->quantity
+        ]);
+        
+    } else {
+        $table = $wpdb->prefix . 'wh_locations';
+        $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
+        
+        if (!$location) {
+            wp_send_json_error('Location not found');
+            return;
+        }
+        
+        $qr_data = json_encode([
+            'type' => 'location',
+            'id' => $location->id,
+            'name' => $location->name,
+            'location_type' => $location->type
+        ]);
+    }
+    
+    // Generate QR code using Google Charts API (simple solution)
+    $qr_url = generate_qr_code_url($qr_data);
+    
+    // Update database with QR code URL
+    $result = $wpdb->update(
+        $table,
+        array('qr_code_image' => $qr_url),
+        array('id' => $id),
+        array('%s'),
+        array('%d')
+    );
+    
+    if ($result !== false) {
+        wp_send_json_success([
+            'qr_url' => $qr_url,
+            'data' => $qr_data
+        ]);
+    } else {
+        wp_send_json_error('Failed to save QR code');
+    }
+}
+
+function handle_get_qr_print_data() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    $type = sanitize_text_field($_POST['type']);
+    $id = intval($_POST['id']);
+    
+    global $wpdb;
+    
+    if ($type === 'item') {
+        $table = $wpdb->prefix . 'wh_inventory_items';
+        $item = $wpdb->get_row($wpdb->prepare("
+            SELECT i.*, c.name as category_name, l.name as location_name 
+            FROM $table i
+            LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
+            LEFT JOIN {$wpdb->prefix}wh_locations l ON i.location_id = l.id
+            WHERE i.id = %d
+        ", $id));
+        
+        if (!$item) {
+            wp_send_json_error('Item not found');
+            return;
+        }
+        
+        $additional_info = "<p>Category: " . ($item->category_name ?: 'Uncategorized') . "</p>";
+        $additional_info .= "<p>Location: " . ($item->location_name ?: 'No location') . "</p>";
+        $additional_info .= "<p>Quantity: " . number_format($item->quantity) . "</p>";
+        
+        wp_send_json_success([
+            'qr_url' => $item->qr_code_image,
+            'name' => $item->name,
+            'id' => $item->internal_id,
+            'additional_info' => $additional_info
+        ]);
+        
+    } else {
+        $table = $wpdb->prefix . 'wh_locations';
+        $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
+        
+        if (!$location) {
+            wp_send_json_error('Location not found');
+            return;
+        }
+        
+        $additional_info = "<p>Type: " . ucwords($location->type) . "</p>";
+        if ($location->description) {
+            $additional_info .= "<p>Description: " . $location->description . "</p>";
+        }
+        
+        wp_send_json_success([
+            'qr_url' => $location->qr_code_image,
+            'name' => $location->name,
+            'id' => $location->id,
+            'additional_info' => $additional_info
+        ]);
+    }
+}
+
+function generate_qr_code_url($data, $size = 200) {
+    // Using Google Charts API for QR code generation (simple and reliable)
+    $encoded_data = urlencode($data);
+    return "https://chart.googleapis.com/chart?chs={$size}x{$size}&cht=qr&chl={$encoded_data}&choe=UTF-8";
+}
+
+// Add AJAX action hooks
+add_action('wp_ajax_generate_qr_code', 'handle_generate_qr_code');
+add_action('wp_ajax_nopriv_generate_qr_code', 'handle_generate_qr_code');
+add_action('wp_ajax_get_qr_print_data', 'handle_get_qr_print_data');
+add_action('wp_ajax_nopriv_get_qr_print_data', 'handle_get_qr_print_data');
 ?> 
