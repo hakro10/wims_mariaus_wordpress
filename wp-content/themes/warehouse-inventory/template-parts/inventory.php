@@ -28,6 +28,8 @@ $locations = get_all_locations();
                 <option value="in-stock">In Stock</option>
                 <option value="low-stock">Low Stock</option>
                 <option value="out-of-stock">Out of Stock</option>
+                <option value="tested">Tested</option>
+                <option value="untested">Untested</option>
             </select>
             
             <button class="btn btn-primary" onclick="openModal('add-item-modal')">
@@ -446,27 +448,41 @@ function renderInventoryGrid(items) {
     `).join('');
 }
 
-// Submit add item form
+// Submit add/edit item form
 function submitAddItem() {
     const form = document.getElementById('add-item-form');
     const formData = new FormData(form);
+    const submitBtn = document.getElementById('inventory-modal-submit-btn');
+    const isEditMode = submitBtn.getAttribute('data-mode') === 'edit';
+    const itemId = submitBtn.getAttribute('data-item-id');
     
     // Convert FormData to object for AJAX
     const data = {
-        action: 'add_inventory_item',
+        action: isEditMode ? 'update_inventory_item' : 'add_inventory_item',
         nonce: warehouse_ajax.nonce
     };
+    
+    // Add item ID for edit mode
+    if (isEditMode && itemId) {
+        data.item_id = itemId;
+    }
     
     for (let [key, value] of formData.entries()) {
         data[key] = value;
     }
     
+    // Don't send purchase_price in edit mode to prevent changes
+    if (isEditMode) {
+        delete data.purchase_price;
+    }
+    
+    console.log('Submitting form data:', data);
+    
     jQuery.post(warehouse_ajax.ajax_url, data, function(response) {
         if (response.success) {
             closeModal('add-item-modal');
-            form.reset();
             loadInventoryItems();
-            alert('Item added successfully!');
+            alert(isEditMode ? 'Item updated successfully!' : 'Item added successfully!');
         } else {
             alert('Error: ' + response.data);
         }
@@ -481,9 +497,30 @@ function openModal(modalId) {
 function closeModal(modalId) {
     document.getElementById(modalId).style.display = 'none';
     if (modalId === 'add-item-modal') {
-        const form = document.getElementById('add-item-form');
-        if (form) form.reset();
+        resetAddItemModal();
     }
+}
+
+// Reset modal to add mode
+function resetAddItemModal() {
+    const form = document.getElementById('add-item-form');
+    if (form) form.reset();
+    
+    // Reset modal title
+    document.querySelector('#add-item-modal .inventory-modal-header h3').textContent = 'Add New Item';
+    
+    // Reset submit button
+    const submitBtn = document.getElementById('inventory-modal-submit-btn');
+    submitBtn.textContent = 'Add Item';
+    submitBtn.removeAttribute('data-mode');
+    submitBtn.removeAttribute('data-item-id');
+    
+    // Reset purchase price field to editable
+    const purchasePriceInput = document.getElementById('purchase-price-input');
+    purchasePriceInput.readOnly = false;
+    purchasePriceInput.style.backgroundColor = '';
+    purchasePriceInput.style.color = '';
+    purchasePriceInput.title = '';
 }
 
 // Initialize event listeners
@@ -553,8 +590,71 @@ document.addEventListener('DOMContentLoaded', function() {
 // Edit item function
 function editItem(itemId) {
     console.log('Edit item:', itemId);
-    // TODO: Implement edit functionality
-    alert('Edit functionality coming soon! Item ID: ' + itemId);
+    
+    // Get item details first
+    const formData = new FormData();
+    formData.append('action', 'get_inventory_item');
+    formData.append('nonce', warehouse_ajax.nonce);
+    formData.append('item_id', itemId);
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            openEditModal(data.data);
+        } else {
+            alert('Error: Could not load item details');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error loading item details');
+    });
+}
+
+// Open edit modal with pre-populated data
+function openEditModal(item) {
+    console.log('Opening edit modal for item:', item);
+    
+    // Change modal title
+    document.querySelector('#add-item-modal .inventory-modal-header h3').textContent = 'Edit Item';
+    
+    // Change submit button text and action
+    const submitBtn = document.getElementById('inventory-modal-submit-btn');
+    submitBtn.textContent = 'Update Item';
+    submitBtn.setAttribute('data-mode', 'edit');
+    submitBtn.setAttribute('data-item-id', item.id);
+    
+    // Populate form fields with existing data
+    document.querySelector('input[name="name"]').value = item.name || '';
+    document.querySelector('input[name="internal_id"]').value = item.internal_id || '';
+    document.querySelector('textarea[name="description"]').value = item.description || '';
+    document.querySelector('select[name="category_id"]').value = item.category_id || '';
+    document.querySelector('select[name="location_id"]').value = item.location_id || '';
+    document.querySelector('input[name="quantity"]').value = item.quantity || '';
+    document.querySelector('input[name="min_stock_level"]').value = item.min_stock_level || '';
+    
+    // Populate prices
+    const purchasePriceInput = document.getElementById('purchase-price-input');
+    purchasePriceInput.value = item.purchase_price || '';
+    // Make purchase price readonly with visual indication
+    purchasePriceInput.readOnly = true;
+    purchasePriceInput.style.backgroundColor = '#f3f4f6';
+    purchasePriceInput.style.color = '#6b7280';
+    purchasePriceInput.title = 'Purchase price cannot be edited to maintain cost basis integrity';
+    
+    document.querySelector('input[name="selling_price"]').value = item.selling_price || '';
+    document.getElementById('total-lot-price-input').value = item.total_lot_price || '';
+    document.querySelector('input[name="supplier"]').value = item.supplier || '';
+    
+    // Set tested checkbox
+    document.querySelector('input[name="tested"]').checked = item.tested == '1';
+    
+    // Show the modal
+    openModal('add-item-modal');
 }
 
 // Sell item function
@@ -861,38 +961,61 @@ function updateBidirectionalCalculations() {
     const purchasePrice = parseFloat(document.getElementById('purchase-price-input').value) || 0;
     const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
     const lotCalculations = document.getElementById('lot-calculations');
+    const purchasePriceInput = document.getElementById('purchase-price-input');
+    const isEditMode = purchasePriceInput && purchasePriceInput.readOnly;
     
     if (quantity > 0) {
         let perUnitCost = 0;
         let totalCost = 0;
         
-        // Determine calculation direction based on last modified field
-        if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
-            // User entered lot price - calculate per unit
-            perUnitCost = totalLotPrice / quantity;
-            totalCost = totalLotPrice;
-            
-            // Update purchase price to match (without triggering events)
-            document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
-            
-        } else if (lastModifiedField === 'purchase_price' && purchasePrice > 0) {
-            // User entered purchase price - calculate lot total
-            perUnitCost = purchasePrice;
-            totalCost = purchasePrice * quantity;
-            
-            // Update lot price to match (without triggering events)
-            document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
-            
-        } else if (lastModifiedField === 'quantity') {
-            // Quantity changed - recalculate based on existing values
-            if (totalLotPrice > 0) {
+        // In edit mode, purchase price is readonly, so only allow lot price -> per unit calculations
+        if (isEditMode) {
+            if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
+                // User entered lot price - calculate per unit (display only, don't update purchase price)
                 perUnitCost = totalLotPrice / quantity;
                 totalCost = totalLotPrice;
+            } else if (lastModifiedField === 'quantity') {
+                // Quantity changed - recalculate based on lot price if available
+                if (totalLotPrice > 0) {
+                    perUnitCost = totalLotPrice / quantity;
+                    totalCost = totalLotPrice;
+                } else if (purchasePrice > 0) {
+                    // Use existing purchase price for display
+                    perUnitCost = purchasePrice;
+                    totalCost = purchasePrice * quantity;
+                    // Update lot price based on existing purchase price
+                    document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
+                }
+            }
+        } else {
+            // Normal add mode - full bidirectional calculations
+            if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
+                // User entered lot price - calculate per unit
+                perUnitCost = totalLotPrice / quantity;
+                totalCost = totalLotPrice;
+                
+                // Update purchase price to match (without triggering events)
                 document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
-            } else if (purchasePrice > 0) {
+                
+            } else if (lastModifiedField === 'purchase_price' && purchasePrice > 0) {
+                // User entered purchase price - calculate lot total
                 perUnitCost = purchasePrice;
                 totalCost = purchasePrice * quantity;
+                
+                // Update lot price to match (without triggering events)
                 document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
+                
+            } else if (lastModifiedField === 'quantity') {
+                // Quantity changed - recalculate based on existing values
+                if (totalLotPrice > 0) {
+                    perUnitCost = totalLotPrice / quantity;
+                    totalCost = totalLotPrice;
+                    document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
+                } else if (purchasePrice > 0) {
+                    perUnitCost = purchasePrice;
+                    totalCost = purchasePrice * quantity;
+                    document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
+                }
             }
         }
         
@@ -902,6 +1025,18 @@ function updateBidirectionalCalculations() {
             document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
             document.getElementById('total-quantity').textContent = quantity;
             document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
+            
+            // Add note in edit mode
+            if (isEditMode) {
+                const existingNote = lotCalculations.querySelector('.edit-mode-note');
+                if (!existingNote) {
+                    const note = document.createElement('div');
+                    note.className = 'edit-mode-note';
+                    note.style.cssText = 'font-size:0.875rem;color:#6b7280;font-style:italic;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;';
+                    note.textContent = 'Note: Purchase price is locked to maintain cost basis integrity';
+                    lotCalculations.appendChild(note);
+                }
+            }
         } else {
             lotCalculations.style.display = 'none';
         }
@@ -1002,5 +1137,25 @@ document.addEventListener('DOMContentLoaded', function() {
     border-radius: 4px !important;
     font-weight: 600 !important;
     font-size: 0.875rem !important;
+}
+
+/* Tested status badge styling */
+.tested-badge {
+    padding: 0.25rem 0.5rem !important;
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+}
+
+.tested-yes {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #22c55e !important;
+}
+
+.tested-no {
+    background: #fef2f2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #ef4444 !important;
 }
 </style> 

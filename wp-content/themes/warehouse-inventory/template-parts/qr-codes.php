@@ -345,9 +345,13 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER
     height: 100% !important;
     background: rgba(0, 0, 0, 0.6) !important;
     z-index: 99999 !important;
-    display: flex !important;
+    display: none !important;
     align-items: center !important;
     justify-content: center !important;
+}
+
+.print-modal-overlay.show {
+    display: flex !important;
 }
 
 .print-modal-content {
@@ -882,10 +886,8 @@ function printQRCode(id, type) {
         const modal = document.getElementById('printModal');
         console.log('Modal element:', modal);
         
-        // Force display the modal
-        modal.style.display = 'flex';
-        modal.style.visibility = 'visible';
-        modal.style.opacity = '1';
+        // Show the modal by adding the show class
+        modal.classList.add('show');
         
         console.log('Modal should now be visible');
     } else {
@@ -904,9 +906,7 @@ window.closePrintModal = function() {
     const modal = document.getElementById('printModal');
     if (modal) {
         console.log('Hiding modal');
-        modal.style.display = 'none';
-        modal.style.visibility = 'hidden';
-        modal.style.opacity = '0';
+        modal.classList.remove('show');
     } else {
         console.error('Modal not found in closePrintModal');
     }
@@ -970,7 +970,7 @@ function setupPrintModalEvents() {
     
     // Close modal with ESC key
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && modal.style.display !== 'none') {
+        if (e.key === 'Escape' && modal.classList.contains('show')) {
             console.log('ESC key pressed, closing modal');
             closePrintModal();
         }

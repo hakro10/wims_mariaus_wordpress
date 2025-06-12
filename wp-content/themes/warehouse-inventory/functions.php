@@ -468,6 +468,7 @@ function handle_get_inventory_items() {
     
     $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
     $category = isset($_POST['category']) ? intval($_POST['category']) : 0;
+    $status = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
     
     $sql = "SELECT i.*, c.name as category_name, l.name as location_name 
             FROM {$wpdb->prefix}wh_inventory_items i
@@ -482,6 +483,17 @@ function handle_get_inventory_items() {
     
     if ($category > 0) {
         $sql .= $wpdb->prepare(" AND i.category_id = %d", $category);
+    }
+    
+    if (!empty($status)) {
+        if ($status === 'tested') {
+            $sql .= " AND i.tested = 1";
+        } elseif ($status === 'untested') {
+            $sql .= " AND (i.tested = 0 OR i.tested IS NULL)";
+        } else {
+            // Handle stock status filters (in-stock, low-stock, out-of-stock)
+            $sql .= $wpdb->prepare(" AND i.status = %s", $status);
+        }
     }
     
     $sql .= " ORDER BY i.created_at DESC";
@@ -1104,7 +1116,7 @@ function handle_sell_inventory_item_detailed() {
 function handle_update_inventory_item() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    if (!current_user_can('edit_inventory')) {
+    if (!current_user_can('edit_posts')) {
         wp_die('Unauthorized');
     }
     
@@ -1119,38 +1131,45 @@ function handle_update_inventory_item() {
     $location_id = intval($_POST['location_id']);
     $quantity = intval($_POST['quantity']);
     $min_stock_level = intval($_POST['min_stock_level']);
-    $purchase_price = floatval($_POST['purchase_price']);
     $selling_price = floatval($_POST['selling_price']);
+    $total_lot_price = floatval($_POST['total_lot_price']);
     $supplier = sanitize_text_field($_POST['supplier']);
+    $tested = isset($_POST['tested']) ? 1 : 0;
     
-    // Determine status based on quantity
+    // Determine status based on quantity and min stock level
     $status = $quantity == 0 ? 'out-of-stock' : 
-             ($quantity <= $min_stock_level ? 'low-stock' : 'in-stock');
+             ($min_stock_level > 0 && $quantity <= $min_stock_level ? 'low-stock' : 'in-stock');
+    
+    // Update data array - NOTE: purchase_price is intentionally excluded to prevent editing
+    $update_data = array(
+        'name' => $name,
+        'internal_id' => $internal_id,
+        'description' => $description,
+        'category_id' => $category_id,
+        'location_id' => $location_id,
+        'quantity' => $quantity,
+        'min_stock_level' => $min_stock_level,
+        'selling_price' => $selling_price,
+        'total_lot_price' => $total_lot_price,
+        'supplier' => $supplier,
+        'tested' => $tested,
+        'status' => $status
+    );
+    
+    $format_array = array('%s', '%s', '%s', '%d', '%d', '%d', '%d', '%f', '%f', '%s', '%d', '%s');
     
     $result = $wpdb->update(
         $table_name,
-        array(
-            'name' => $name,
-            'internal_id' => $internal_id,
-            'description' => $description,
-            'category_id' => $category_id,
-            'location_id' => $location_id,
-            'quantity' => $quantity,
-            'min_stock_level' => $min_stock_level,
-            'purchase_price' => $purchase_price,
-            'selling_price' => $selling_price,
-            'supplier' => $supplier,
-            'status' => $status
-        ),
+        $update_data,
         array('id' => $item_id),
-        array('%s', '%s', '%s', '%d', '%d', '%d', '%d', '%f', '%f', '%s', '%s'),
+        $format_array,
         array('%d')
     );
     
     if ($result !== false) {
         wp_send_json_success('Item updated successfully');
     } else {
-        wp_send_json_error('Failed to update item');
+        wp_send_json_error('Failed to update item: ' . $wpdb->last_error);
     }
 }
 
