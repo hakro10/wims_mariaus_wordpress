@@ -10,22 +10,22 @@ if (!defined('ABSPATH')) {
 
 // Theme setup
 function warehouse_inventory_setup() {
-    // Add theme support for various features
-    add_theme_support('title-tag');
-    add_theme_support('post-thumbnails');
-    add_theme_support('html5', array(
-        'search-form',
-        'comment-form',
-        'comment-list',
-        'gallery',
-        'caption',
-    ));
+    // Create tables
+    warehouse_inventory_create_tables();
     
-    // Register navigation menus
-    register_nav_menus(array(
-        'primary' => __('Primary Menu', 'warehouse-inventory'),
-        'footer' => __('Footer Menu', 'warehouse-inventory'),
-    ));
+    // Update table structures
+    update_sales_table_structure();
+    update_inventory_items_table_structure();
+    
+    // Create profit tracking table
+    create_profit_tracking_table();
+    
+    // Add roles and capabilities
+    add_warehouse_roles();
+    add_warehouse_capabilities();
+    
+    // Populate sample data if needed
+    // populate_sample_profit_data();
 }
 add_action('after_setup_theme', 'warehouse_inventory_setup');
 
@@ -160,40 +160,46 @@ function warehouse_inventory_create_tables() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
     
-    // Insert default categories
-    $wpdb->insert($categories_table, array(
-        'name' => 'Electronics',
-        'description' => 'Electronic devices and components',
-        'color' => '#3b82f6'
-    ));
+    // Insert default categories (only if they don't exist)
+    $existing_categories = $wpdb->get_var("SELECT COUNT(*) FROM $categories_table");
+    if ($existing_categories == 0) {
+        $wpdb->insert($categories_table, array(
+            'name' => 'Electronics',
+            'description' => 'Electronic devices and components',
+            'color' => '#3b82f6'
+        ));
+        
+        $wpdb->insert($categories_table, array(
+            'name' => 'Tools',
+            'description' => 'Hand tools and equipment',
+            'color' => '#10b981'
+        ));
+        
+        $wpdb->insert($categories_table, array(
+            'name' => 'Office Supplies',
+            'description' => 'Office equipment and supplies',
+            'color' => '#f59e0b'
+        ));
+    }
     
-    $wpdb->insert($categories_table, array(
-        'name' => 'Tools',
-        'description' => 'Hand tools and equipment',
-        'color' => '#10b981'
-    ));
-    
-    $wpdb->insert($categories_table, array(
-        'name' => 'Office Supplies',
-        'description' => 'Office equipment and supplies',
-        'color' => '#f59e0b'
-    ));
-    
-    // Insert default locations
-    $wpdb->insert($locations_table, array(
-        'name' => 'Main Warehouse',
-        'type' => 'warehouse',
-        'description' => 'Primary storage facility',
-        'level' => 1
-    ));
-    
-    $wpdb->insert($locations_table, array(
-        'name' => 'Section A',
-        'type' => 'section',
-        'description' => 'Electronics section',
-        'parent_id' => 1,
-        'level' => 2
-    ));
+    // Insert default locations (only if they don't exist)
+    $existing_locations = $wpdb->get_var("SELECT COUNT(*) FROM $locations_table");
+    if ($existing_locations == 0) {
+        $wpdb->insert($locations_table, array(
+            'name' => 'Main Warehouse',
+            'type' => 'warehouse',
+            'description' => 'Primary storage facility',
+            'level' => 1
+        ));
+        
+        $wpdb->insert($locations_table, array(
+            'name' => 'Section A',
+            'type' => 'section',
+            'description' => 'Electronics section',
+            'parent_id' => 1,
+            'level' => 2
+        ));
+    }
 }
 
 // Hook into theme activation
@@ -202,44 +208,49 @@ add_action('after_switch_theme', 'warehouse_inventory_create_tables');
 // Function to update sales table structure
 function update_sales_table_structure() {
     global $wpdb;
+    
     $sales_table = $wpdb->prefix . 'wh_sales';
     
-    // Check if sale_number column exists
-    $column_exists = $wpdb->get_results("SHOW COLUMNS FROM $sales_table LIKE 'sale_number'");
+    // Check if columns exist before adding them
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $sales_table");
+    $existing_columns = array_column($columns, 'Field');
     
-    if (empty($column_exists)) {
-        // Add missing columns to match plugin structure
-        $wpdb->query("ALTER TABLE $sales_table 
-            ADD COLUMN sale_number varchar(100) NOT NULL UNIQUE AFTER id,
-            ADD COLUMN item_id mediumint(9) NOT NULL AFTER sale_number,
-            ADD COLUMN discount_amount decimal(10,2) DEFAULT 0 AFTER unit_price,
-            ADD COLUMN tax_amount decimal(10,2) DEFAULT 0 AFTER discount_amount,
-            ADD COLUMN customer_phone varchar(50) AFTER customer_email,
-            ADD COLUMN customer_address text AFTER customer_phone,
-            ADD COLUMN payment_method varchar(50) AFTER customer_address,
-            ADD COLUMN payment_status varchar(50) DEFAULT 'completed' AFTER payment_method,
-            ADD COLUMN delivery_method varchar(50) AFTER payment_status,
-            ADD COLUMN delivery_status varchar(50) AFTER delivery_method,
-            ADD COLUMN delivery_address text AFTER delivery_status,
-            ADD COLUMN tracking_number varchar(100) AFTER delivery_address,
-            ADD COLUMN delivery_date datetime AFTER tracking_number,
-            ADD COLUMN warranty_period varchar(50) AFTER delivery_date,
-            ADD COLUMN warranty_expiry_date datetime AFTER warranty_period,
-            ADD COLUMN metadata text AFTER notes,
-            ADD INDEX idx_sale_number (sale_number),
-            ADD INDEX idx_item (item_id),
-            ADD INDEX idx_payment_status (payment_status)");
-        
-        // Update existing records to have item_id = inventory_item_id
-        $wpdb->query("UPDATE $sales_table SET item_id = inventory_item_id WHERE item_id IS NULL OR item_id = 0");
-        
-        error_log("Sales table structure updated successfully");
+    $columns_to_add = array(
+        'customer_phone' => "ALTER TABLE $sales_table ADD COLUMN customer_phone VARCHAR(20) AFTER customer_email",
+        'customer_address' => "ALTER TABLE $sales_table ADD COLUMN customer_address TEXT AFTER customer_phone",
+        'warranty_period' => "ALTER TABLE $sales_table ADD COLUMN warranty_period VARCHAR(50) AFTER payment_status"
+    );
+    
+    foreach ($columns_to_add as $column => $sql) {
+        if (!in_array($column, $existing_columns)) {
+            $wpdb->query($sql);
+        }
+    }
+}
+
+function update_inventory_items_table_structure() {
+    global $wpdb;
+    
+    $items_table = $wpdb->prefix . 'wh_inventory_items';
+    
+    // Check if columns exist before adding them
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM $items_table");
+    $existing_columns = array_column($columns, 'Field');
+    
+    if (!in_array('tested', $existing_columns)) {
+        $wpdb->query("ALTER TABLE $items_table ADD COLUMN tested BOOLEAN DEFAULT FALSE AFTER status");
+    }
+    
+    if (!in_array('total_lot_price', $existing_columns)) {
+        $wpdb->query("ALTER TABLE $items_table ADD COLUMN total_lot_price DECIMAL(10,2) DEFAULT NULL AFTER selling_price");
     }
 }
 
 // Run table update on theme activation and admin init
 add_action('after_switch_theme', 'update_sales_table_structure');
 add_action('admin_init', 'update_sales_table_structure');
+add_action('after_switch_theme', 'update_inventory_items_table_structure');
+add_action('admin_init', 'update_inventory_items_table_structure');
 
 // Function to create profit tracking table
 function create_profit_tracking_table() {
@@ -399,6 +410,8 @@ function handle_add_inventory_item() {
     $quantity = intval($_POST['quantity']);
     $purchase_price = floatval($_POST['purchase_price']);
     $selling_price = floatval($_POST['selling_price']);
+    $total_lot_price = floatval($_POST['total_lot_price']);
+    $tested = isset($_POST['tested']) ? 1 : 0;
     
     $result = $wpdb->insert(
         $table_name,
@@ -411,8 +424,10 @@ function handle_add_inventory_item() {
             'quantity' => $quantity,
             'purchase_price' => $purchase_price,
             'selling_price' => $selling_price,
+            'total_lot_price' => $total_lot_price,
             'created_by' => get_current_user_id(),
-            'status' => $quantity > 0 ? 'in-stock' : 'out-of-stock'
+            'status' => $quantity > 0 ? 'in-stock' : 'out-of-stock',
+            'tested' => $tested
         )
     );
     
@@ -425,7 +440,8 @@ function handle_add_inventory_item() {
             'id' => $item_id,
             'internal_id' => $internal_id,
             'name' => $name,
-            'quantity' => $quantity
+            'quantity' => $quantity,
+            'tested' => $tested
         ]);
         
         $qr_url = generate_qr_code_url($qr_data);
@@ -1637,7 +1653,8 @@ function handle_generate_qr_code() {
             'id' => $item->id,
             'internal_id' => $item->internal_id,
             'name' => $item->name,
-            'quantity' => $item->quantity
+            'quantity' => $item->quantity,
+            'tested' => $item->tested ?? 0
         ]);
         
     } else {
@@ -1705,6 +1722,7 @@ function handle_get_qr_print_data() {
         $additional_info = "<p>Category: " . ($item->category_name ?: 'Uncategorized') . "</p>";
         $additional_info .= "<p>Location: " . ($item->location_name ?: 'No location') . "</p>";
         $additional_info .= "<p>Quantity: " . number_format($item->quantity) . "</p>";
+        $additional_info .= "<p>Tested: " . ($item->tested ? '✅ Yes' : '❌ No') . "</p>";
         
         wp_send_json_success([
             'qr_url' => $item->qr_code_image,
@@ -1737,9 +1755,9 @@ function handle_get_qr_print_data() {
 }
 
 function generate_qr_code_url($data, $size = 200) {
-    // Using Google Charts API for QR code generation (simple and reliable)
+    // Using QR Server API for QR code generation (more reliable than Google Charts)
     $encoded_data = urlencode($data);
-    return "https://chart.googleapis.com/chart?chs={$size}x{$size}&cht=qr&chl={$encoded_data}&choe=UTF-8";
+    return "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&data={$encoded_data}";
 }
 
 // Bulk QR code generation handler
@@ -1771,7 +1789,8 @@ function handle_generate_all_qr_codes() {
                 'id' => $item->id,
                 'internal_id' => $item->internal_id,
                 'name' => $item->name,
-                'quantity' => $item->quantity
+                'quantity' => $item->quantity,
+                'tested' => $item->tested ?? 0
             ]);
             
             $qr_url = generate_qr_code_url($qr_data);
@@ -1845,72 +1864,4 @@ add_action('wp_ajax_nopriv_generate_qr_code', 'handle_generate_qr_code');
 add_action('wp_ajax_get_qr_print_data', 'handle_get_qr_print_data');
 add_action('wp_ajax_generate_all_qr_codes', 'handle_generate_all_qr_codes');
 add_action('wp_ajax_nopriv_get_qr_print_data', 'handle_get_qr_print_data');
-
-// Temporary function to generate QR codes for all existing items and locations
-function generate_all_existing_qr_codes() {
-    global $wpdb;
-    
-    // Generate QR codes for all items
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    $items = $wpdb->get_results("SELECT * FROM $items_table ORDER BY id");
-    
-    foreach ($items as $item) {
-        $qr_data = json_encode([
-            'type' => 'item',
-            'id' => $item->id,
-            'internal_id' => $item->internal_id,
-            'name' => $item->name,
-            'quantity' => $item->quantity
-        ]);
-        
-        $qr_url = generate_qr_code_url($qr_data);
-        
-        $wpdb->update(
-            $items_table,
-            array('qr_code_image' => $qr_url),
-            array('id' => $item->id),
-            array('%s'),
-            array('%d')
-        );
-    }
-    
-    // Generate QR codes for all locations
-    $locations_table = $wpdb->prefix . 'wh_locations';
-    $locations = $wpdb->get_results("SELECT * FROM $locations_table ORDER BY id");
-    
-    foreach ($locations as $location) {
-        $qr_data = json_encode([
-            'type' => 'location',
-            'id' => $location->id,
-            'name' => $location->name,
-            'code' => $location->code ?? '',
-            'location_type' => $location->type
-        ]);
-        
-        $qr_url = generate_qr_code_url($qr_data);
-        
-        $wpdb->update(
-            $locations_table,
-            array('qr_code_image' => $qr_url),
-            array('id' => $location->id),
-            array('%s'),
-            array('%d')
-        );
-    }
-}
-
-// Run this once to generate QR codes for existing items
-add_action('init', function() {
-    if (isset($_GET['generate_qr_codes']) && current_user_can('manage_options')) {
-        generate_all_existing_qr_codes();
-        wp_redirect(home_url('/?qr_generated=1'));
-        exit;
-    }
-    
-    if (isset($_GET['qr_generated'])) {
-        add_action('admin_notices', function() {
-            echo '<div class="notice notice-success"><p>QR codes generated for all items and locations!</p></div>';
-        });
-    }
-});
 ?> 

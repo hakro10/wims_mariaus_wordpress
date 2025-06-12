@@ -165,18 +165,18 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER
 </div>
 
 <!-- Print Modal -->
-<div id="printModal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
+<div id="printModal" class="print-modal-overlay" style="display: none;">
+    <div class="print-modal-content">
+        <div class="print-modal-header">
             <h3>Print QR Code</h3>
-            <button class="modal-close">&times;</button>
+            <button class="print-modal-close" type="button">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="print-modal-body">
             <div id="printContent"></div>
         </div>
-        <div class="modal-footer">
-            <button id="printQRCode" class="btn btn-primary">Print</button>
-            <button class="btn btn-secondary modal-close">Cancel</button>
+        <div class="print-modal-footer">
+            <button id="printQRCode" class="btn btn-primary" type="button">Print</button>
+            <button class="btn btn-secondary print-modal-cancel" type="button">Cancel</button>
         </div>
     </div>
 </div>
@@ -336,54 +336,147 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER
     line-height: 1.4;
 }
 
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Print Modal Specific Styles */
+.print-modal-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    z-index: 99999 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
-.modal-content {
-    background: white;
+.print-modal-content {
+    background: white !important;
+    border-radius: 8px !important;
+    max-width: 500px !important;
+    width: 90% !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+    position: relative !important;
+}
+
+.print-modal-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 1.5rem !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+.print-modal-header h3 {
+    margin: 0 !important;
+    color: #1f2937 !important;
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+}
+
+.print-modal-body {
+    padding: 1.5rem !important;
+}
+
+.print-modal-footer {
+    display: flex !important;
+    gap: 0.75rem !important;
+    justify-content: flex-end !important;
+    padding: 1.5rem !important;
+    border-top: 1px solid #e5e7eb !important;
+}
+
+.print-modal-close {
+    background: none !important;
+    border: none !important;
+    font-size: 1.5rem !important;
+    cursor: pointer !important;
+    color: #6b7280 !important;
+    padding: 0 !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 4px !important;
+    transition: all 0.2s !important;
+}
+
+.print-modal-close:hover {
+    background-color: #f3f4f6 !important;
+    color: #374151 !important;
+}
+
+/* Print QR Label */
+.print-qr-label {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
-    max-width: 500px;
-    width: 90%;
-    max-height: 90vh;
-    overflow-y: auto;
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    border-bottom: 1px solid #e5e7eb;
+.qr-image img {
+    width: 120px;
+    height: 120px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
 }
 
-.modal-body {
-    padding: 1rem;
+.qr-info h3 {
+    margin: 0 0 0.5rem 0;
+    color: #1f2937;
+    font-size: 1.25rem;
 }
 
-.modal-footer {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-    padding: 1rem;
-    border-top: 1px solid #e5e7eb;
-}
-
-.modal-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
+.qr-info p {
+    margin: 0.25rem 0;
     color: #6b7280;
+    font-size: 0.875rem;
+}
+
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    
+    .print-qr-label, .print-qr-label * {
+        visibility: visible;
+    }
+    
+    .print-qr-label {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        page-break-inside: avoid;
+        border: none;
+        padding: 0;
+    }
+    
+    .qr-image img {
+        width: 100px;
+        height: 100px;
+        border: 1px solid #000;
+    }
+    
+    .qr-info h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: #000;
+    }
+    
+    .qr-info p {
+        margin: 0.25rem 0;
+        color: #000;
+        font-size: 0.9rem;
+    }
 }
 
 /* Mobile Responsive */
@@ -413,7 +506,7 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER
         justify-content: center;
     }
     
-    .modal-content {
+    .print-modal-content {
         width: 95%;
         margin: 1rem;
     }
@@ -438,6 +531,9 @@ let currentStream = null;
 let facingMode = 'environment'; // Start with back camera
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Setup print modal event handlers first
+    setupPrintModalEvents();
+    
     // QR Code Scanner functionality
     const startScannerBtn = document.getElementById('startScanner');
     const stopScannerBtn = document.getElementById('stopScanner');
@@ -459,16 +555,7 @@ document.addEventListener('DOMContentLoaded', function() {
     switchCameraBtn.addEventListener('click', switchCamera);
     closeScanResult.addEventListener('click', closeScanResult);
 
-    // QR Code generation
-    document.querySelectorAll('.generate-qr').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const type = this.dataset.type;
-            const id = this.dataset.id;
-            generateQRCode(type, id, this);
-        });
-    });
-
-    // Bulk generation
+    // Bulk generation (these buttons are static, so direct listeners are fine)
     document.getElementById('generateAllItems').addEventListener('click', function() {
         generateBulkQRCodes('item');
     });
@@ -477,30 +564,30 @@ document.addEventListener('DOMContentLoaded', function() {
         generateBulkQRCodes('location');
     });
 
-    // Download QR codes
-    document.querySelectorAll('.download-qr').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const url = this.dataset.url;
+    // Use event delegation for dynamic QR buttons
+    document.addEventListener('click', function(e) {
+        // Handle QR generation buttons (for dynamic buttons)
+        if (e.target.classList.contains('generate-qr')) {
+            const type = e.target.dataset.type;
+            const id = e.target.dataset.id;
+            generateQRCode(type, id, e.target);
+            return;
+        }
+        
+        // Handle download buttons (for dynamic buttons)
+        if (e.target.classList.contains('download-qr')) {
+            const url = e.target.dataset.url;
             downloadQRCode(url);
-        });
-    });
-
-    // Print QR codes
-    document.querySelectorAll('.print-qr').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const id = this.dataset.id;
-            const type = this.dataset.type;
+            return;
+        }
+        
+        // Handle print buttons (for dynamic buttons)
+        if (e.target.classList.contains('print-qr')) {
+            const id = e.target.dataset.id;
+            const type = e.target.dataset.type;
             printQRCode(id, type);
-        });
-    });
-
-    // Modal functionality
-    document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', closeModal);
-    });
-
-    document.getElementById('printQRCode').addEventListener('click', function() {
-        window.print();
+            return;
+        }
     });
 });
 
@@ -662,9 +749,7 @@ function generateQRCode(type, id, button) {
                     <button class="btn btn-sm btn-secondary download-qr" data-url="${data.data.qr_url}">Download</button>
                     <button class="btn btn-sm btn-secondary print-qr" data-id="${id}" data-type="${type}">Print</button>
                 `;
-                
-                // Re-attach event listeners
-                attachQREventListeners(card);
+                // Event listeners are handled by event delegation, no need to manually attach
             }
             
             alert('QR Code generated successfully!');
@@ -725,90 +810,171 @@ function generateBulkQRCodes(type) {
 }
 
 function downloadQRCode(url) {
+    if (!url || url.includes('placeholder')) {
+        alert('QR code not available for download. Please generate a QR code first.');
+        return;
+    }
+    
+    // Create a temporary link element
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'qr-code.png';
+    link.download = 'qr-code-' + Date.now() + '.png';
+    link.target = '_blank';
+    
+    // Temporarily add to DOM and click
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 }
 
 function printQRCode(id, type) {
-    // Get the QR code data
-    fetch(warehouse_ajax.ajax_url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-            action: 'get_qr_print_data',
-            nonce: warehouse_ajax.nonce,
-            type: type,
-            id: id
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const printContent = document.getElementById('printContent');
-            printContent.innerHTML = `
-                <div class="print-qr-label">
-                    <div class="qr-image">
-                        <img src="${data.data.qr_url}" alt="QR Code">
-                    </div>
-                    <div class="qr-info">
-                        <h3>${data.data.name}</h3>
-                        <p>ID: ${data.data.id}</p>
-                        ${data.data.additional_info || ''}
-                    </div>
+    console.log('printQRCode called with:', { id, type });
+    
+    // Get the QR code directly from the card
+    const card = document.querySelector(`[data-type="${type}"][data-id="${id}"]`);
+    
+    if (!card) {
+        console.error('Item card not found:', { type, id });
+        alert('Item not found');
+        return;
+    }
+    
+    console.log('Card found:', card);
+    
+    const qrImage = card.querySelector('.qr-code-image');
+    const name = card.querySelector('.qr-card-header h4')?.textContent;
+    
+    console.log('QR Image:', qrImage);
+    console.log('Name:', name);
+    
+    let additionalInfo = '';
+    if (type === 'item') {
+        const itemId = card.querySelector('.item-id')?.textContent;
+        const itemDetails = card.querySelector('.item-details');
+        if (itemDetails) {
+            additionalInfo = `<p>${itemId}</p><p>${itemDetails.innerHTML.replace(/<br>/g, '</p><p>')}</p>`;
+        }
+    } else if (type === 'location') {
+        const locationType = card.querySelector('.location-type')?.textContent;
+        const locationDetails = card.querySelector('.location-details');
+        if (locationDetails) {
+            additionalInfo = `<p>Type: ${locationType}</p><p>${locationDetails.textContent}</p>`;
+        }
+    }
+    
+    if (qrImage && qrImage.src && !qrImage.src.includes('placeholder')) {
+        console.log('QR image found, displaying modal');
+        
+        const printContent = document.getElementById('printContent');
+        printContent.innerHTML = `
+            <div class="print-qr-label">
+                <div class="qr-image">
+                    <img src="${qrImage.src}" alt="QR Code" style="width: 120px; height: 120px;">
                 </div>
-                <style>
-                    @media print {
-                        .print-qr-label {
-                            display: flex;
-                            align-items: center;
-                            gap: 1rem;
-                            page-break-inside: avoid;
-                        }
-                        .qr-image img {
-                            width: 100px;
-                            height: 100px;
-                        }
-                        .qr-info h3 {
-                            margin: 0;
-                            font-size: 1.2rem;
-                        }
-                        .qr-info p {
-                            margin: 0.25rem 0;
-                        }
-                    }
-                </style>
-            `;
-            
-            document.getElementById('printModal').style.display = 'flex';
+                <div class="qr-info">
+                    <h3>${name}</h3>
+                    <p><strong>ID:</strong> ${id}</p>
+                    ${additionalInfo}
+                </div>
+            </div>
+        `;
+        
+        const modal = document.getElementById('printModal');
+        console.log('Modal element:', modal);
+        
+        // Force display the modal
+        modal.style.display = 'flex';
+        modal.style.visibility = 'visible';
+        modal.style.opacity = '1';
+        
+        console.log('Modal should now be visible');
+    } else {
+        console.error('QR code not found or invalid:', {
+            qrImage: !!qrImage,
+            src: qrImage?.src,
+            hasPlaceholder: qrImage?.src?.includes('placeholder')
+        });
+        alert('QR code not found or not generated yet. Please generate a QR code first by clicking the "Generate" or "Regenerate" button.');
+    }
+}
+
+// Global function to close the print modal
+window.closePrintModal = function() {
+    console.log('closePrintModal called');
+    const modal = document.getElementById('printModal');
+    if (modal) {
+        console.log('Hiding modal');
+        modal.style.display = 'none';
+        modal.style.visibility = 'hidden';
+        modal.style.opacity = '0';
+    } else {
+        console.error('Modal not found in closePrintModal');
+    }
+};
+
+// Setup print modal event handlers
+function setupPrintModalEvents() {
+    const modal = document.getElementById('printModal');
+    const closeBtn = modal.querySelector('.print-modal-close');
+    const cancelBtn = modal.querySelector('.print-modal-cancel');
+    const printBtn = document.getElementById('printQRCode');
+    
+    console.log('Setting up print modal events...', {
+        modal: !!modal,
+        closeBtn: !!closeBtn,
+        cancelBtn: !!cancelBtn,
+        printBtn: !!printBtn
+    });
+    
+    if (!modal || !closeBtn || !cancelBtn || !printBtn) {
+        console.error('Print modal elements not found!', {
+            modal: !!modal,
+            closeBtn: !!closeBtn,
+            cancelBtn: !!cancelBtn,
+            printBtn: !!printBtn
+        });
+        return;
+    }
+    
+    // Close modal when clicking outside
+    modal.addEventListener('click', function(e) {
+        console.log('Modal click:', e.target === modal);
+        if (e.target === modal) {
+            closePrintModal();
         }
     });
-}
-
-function attachQREventListeners(card) {
-    const downloadBtn = card.querySelector('.download-qr');
-    const printBtn = card.querySelector('.print-qr');
     
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', function() {
-            downloadQRCode(this.dataset.url);
-        });
-    }
+    // Close modal with close button
+    closeBtn.addEventListener('click', function(e) {
+        console.log('Close button clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        closePrintModal();
+    });
     
-    if (printBtn) {
-        printBtn.addEventListener('click', function() {
-            printQRCode(this.dataset.id, this.dataset.type);
-        });
-    }
-}
-
-function closeModal() {
-    document.getElementById('printModal').style.display = 'none';
+    // Close modal with cancel button
+    cancelBtn.addEventListener('click', function(e) {
+        console.log('Cancel button clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        closePrintModal();
+    });
+    
+    // Print button
+    printBtn.addEventListener('click', function(e) {
+        console.log('Print button clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        window.print();
+    });
+    
+    // Close modal with ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.style.display !== 'none') {
+            console.log('ESC key pressed, closing modal');
+            closePrintModal();
+        }
+    });
 }
 
 function viewItem(id) {

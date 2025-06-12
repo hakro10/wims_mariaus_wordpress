@@ -122,8 +122,8 @@ $locations = get_all_locations();
                             <table style="width:100%;border-spacing:10px 0;">
                                 <tr>
                                     <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Purchase Price</label>
-                                        <input type="number" name="purchase_price" step="0.01" min="0" placeholder="0.00"
+                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Purchase Price (per unit)</label>
+                                        <input type="number" name="purchase_price" step="0.01" min="0" placeholder="0.00" id="purchase-price-input"
                                                style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
                                     </td>
                                     <td style="width:50%;">
@@ -135,11 +135,46 @@ $locations = get_all_locations();
                             </table>
                         </td>
                     </tr>
+                    <!-- Total Lot Price Section -->
+                    <tr>
+                        <td style="padding:10px 0;">
+                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:15px;">
+                                <label style="display:block;margin-bottom:10px;font-weight:bold;color:#374151;">💰 Total Lot Price</label>
+                                <input type="number" name="total_lot_price" step="0.01" min="0" placeholder="0.00" id="total-lot-price-input"
+                                       style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;margin-bottom:5px;">
+                                <small style="color:#64748b;font-style:italic;">Total amount paid for this batch/lot of items</small>
+                                
+                                <div id="lot-calculations" style="display:none;margin-top:15px;background:white;border-radius:6px;padding:15px;border:1px solid #e2e8f0;">
+                                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                                        <span style="color:#475569;">Per unit cost:</span>
+                                        <span id="per-unit-cost" style="font-weight:500;color:#1e293b;">$0.00</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                                        <span style="color:#475569;">Total quantity:</span>
+                                        <span id="total-quantity" style="font-weight:500;color:#1e293b;">0</span>
+                                    </div>
+                                    <div style="display:flex;justify-content:space-between;padding:12px 0 8px 0;border-top:2px solid #e2e8f0;margin-top:8px;font-weight:600;color:#1e293b;">
+                                        <span>Total lot cost:</span>
+                                        <span id="total-lot-cost" style="color:#059669;font-size:1.1em;">$0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
                     <tr>
                         <td style="padding:10px 0;">
                             <label style="display:block;margin-bottom:5px;font-weight:bold;">Supplier</label>
                             <input type="text" name="supplier" placeholder="Enter supplier name"
                                    style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:10px 0;">
+                            <label style="display:flex;align-items:center;font-weight:bold;cursor:pointer;">
+                                <input type="checkbox" name="tested" value="1" style="margin-right:8px;transform:scale(1.2);">
+                                ✅ Item has been tested
+                            </label>
+                            <small style="color:#6b7280;font-style:italic;margin-left:24px;">Check this box if the item has been tested and verified to be working properly</small>
                         </td>
                     </tr>
                 </table>
@@ -390,12 +425,21 @@ function renderInventoryGrid(items) {
                     <div class="detail-label">Location</div>
                     <div class="detail-value">${item.location_name || 'No location'}</div>
                 </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tested</div>
+                    <div class="detail-value">
+                        <span class="tested-badge ${item.tested == '1' ? 'tested-yes' : 'tested-no'}">
+                            ${item.tested == '1' ? '✅ Tested' : '❌ Not Tested'}
+                        </span>
+                    </div>
+                </div>
             </div>
             
-            ${item.purchase_price || item.selling_price ? `
+            ${item.purchase_price || item.selling_price || item.total_lot_price ? `
                 <div class="item-pricing">
                     ${item.purchase_price ? `<span class="price-label">Cost: $${parseFloat(item.purchase_price).toFixed(2)}</span>` : ''}
                     ${item.selling_price ? `<span class="price-label">Sell: $${parseFloat(item.selling_price).toFixed(2)}</span>` : ''}
+                    ${item.total_lot_price ? `<span class="price-label lot-price">Batch: $${parseFloat(item.total_lot_price).toFixed(2)}</span>` : ''}
                 </div>
             ` : ''}
         </div>
@@ -745,6 +789,131 @@ function deleteItem(itemId) {
         });
     }
 }
+
+
+
+function updateLotCalculations() {
+    const quantity = parseFloat(document.querySelector('input[name="quantity"]').value) || 0;
+    const purchasePrice = parseFloat(document.getElementById('purchase-price-input').value) || 0;
+    const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
+    const lotCalculations = document.getElementById('lot-calculations');
+    
+    // Show calculations if we have quantity and at least one price
+    if (quantity > 0 && (purchasePrice > 0 || totalLotPrice > 0)) {
+        lotCalculations.style.display = 'block';
+        
+        let perUnitCost = 0;
+        let totalCost = 0;
+        
+        if (totalLotPrice > 0) {
+            // Calculate from lot price
+            perUnitCost = totalLotPrice / quantity;
+            totalCost = totalLotPrice;
+        } else if (purchasePrice > 0) {
+            // Calculate from purchase price
+            perUnitCost = purchasePrice;
+            totalCost = purchasePrice * quantity;
+        }
+        
+        // Update display
+        document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
+        document.getElementById('total-quantity').textContent = quantity;
+        document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
+    } else {
+        lotCalculations.style.display = 'none';
+    }
+}
+
+// Track which field was last modified to determine calculation direction
+let lastModifiedField = null;
+
+function setupLotPriceCalculations() {
+    const quantityInput = document.querySelector('input[name="quantity"]');
+    const purchasePriceInput = document.getElementById('purchase-price-input');
+    const totalLotPriceInput = document.getElementById('total-lot-price-input');
+    const lotCalculations = document.getElementById('lot-calculations');
+    
+    // Add event listeners for auto-calculation
+    if (quantityInput && purchasePriceInput && totalLotPriceInput) {
+        quantityInput.addEventListener('input', function() {
+            lastModifiedField = 'quantity';
+            updateBidirectionalCalculations();
+        });
+        
+        purchasePriceInput.addEventListener('input', function() {
+            lastModifiedField = 'purchase_price';
+            updateBidirectionalCalculations();
+        });
+        
+        totalLotPriceInput.addEventListener('input', function() {
+            lastModifiedField = 'lot_price';
+            updateBidirectionalCalculations();
+        });
+        
+        console.log('Lot price calculations setup complete');
+    } else {
+        console.warn('Lot price calculation elements not found');
+    }
+}
+
+function updateBidirectionalCalculations() {
+    const quantity = parseFloat(document.querySelector('input[name="quantity"]').value) || 0;
+    const purchasePrice = parseFloat(document.getElementById('purchase-price-input').value) || 0;
+    const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
+    const lotCalculations = document.getElementById('lot-calculations');
+    
+    if (quantity > 0) {
+        let perUnitCost = 0;
+        let totalCost = 0;
+        
+        // Determine calculation direction based on last modified field
+        if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
+            // User entered lot price - calculate per unit
+            perUnitCost = totalLotPrice / quantity;
+            totalCost = totalLotPrice;
+            
+            // Update purchase price to match (without triggering events)
+            document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
+            
+        } else if (lastModifiedField === 'purchase_price' && purchasePrice > 0) {
+            // User entered purchase price - calculate lot total
+            perUnitCost = purchasePrice;
+            totalCost = purchasePrice * quantity;
+            
+            // Update lot price to match (without triggering events)
+            document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
+            
+        } else if (lastModifiedField === 'quantity') {
+            // Quantity changed - recalculate based on existing values
+            if (totalLotPrice > 0) {
+                perUnitCost = totalLotPrice / quantity;
+                totalCost = totalLotPrice;
+                document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
+            } else if (purchasePrice > 0) {
+                perUnitCost = purchasePrice;
+                totalCost = purchasePrice * quantity;
+                document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
+            }
+        }
+        
+        // Show calculations if we have valid data
+        if (perUnitCost > 0 && totalCost > 0) {
+            lotCalculations.style.display = 'block';
+            document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
+            document.getElementById('total-quantity').textContent = quantity;
+            document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
+        } else {
+            lotCalculations.style.display = 'none';
+        }
+    } else {
+        lotCalculations.style.display = 'none';
+    }
+}
+
+// Setup lot price calculations when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    setupLotPriceCalculations();
+});
 </script>
 
 <style>
@@ -822,5 +991,16 @@ function deleteItem(itemId) {
     padding: 20px !important;
     border-top: 1px solid #eee !important;
     text-align: right !important;
+}
+
+/* Lot price display styling */
+.price-label.lot-price {
+    background: #fef3c7 !important;
+    color: #d97706 !important;
+    border: 1px solid #f59e0b !important;
+    padding: 0.25rem 0.5rem !important;
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
 }
 </style> 
