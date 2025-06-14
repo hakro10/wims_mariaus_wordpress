@@ -600,6 +600,57 @@ function resetAddItemModal() {
 
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    // Check for dashboard filter on page load
+    const dashboardFilter = localStorage.getItem('dashboard_filter');
+    if (dashboardFilter) {
+        console.log('Applying dashboard filter:', dashboardFilter);
+        
+        // Apply the filter
+        if (dashboardFilter === 'all') {
+            // Clear all filters for showing all items
+            document.getElementById('inventory-search').value = '';
+            document.getElementById('category-filter').value = '';
+            document.getElementById('status-filter').value = '';
+            document.getElementById('location-filter').value = '';
+        } else {
+            // Apply the specific status filter
+            document.getElementById('status-filter').value = dashboardFilter;
+            
+            // Clear other filters for focus
+            document.getElementById('inventory-search').value = '';
+            document.getElementById('category-filter').value = '';
+            document.getElementById('location-filter').value = '';
+        }
+        
+        // Clear the stored filter
+        localStorage.removeItem('dashboard_filter');
+        
+        // Show notification
+        const filterName = dashboardFilter === 'all' ? 'All Items' : 
+                          dashboardFilter.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        showNotification(`Showing: ${filterName}`, 'info');
+    }
+    
+    // Check for item search from dashboard alerts
+    const searchItemId = localStorage.getItem('dashboard_search_item');
+    if (searchItemId) {
+        console.log('Searching for item ID:', searchItemId);
+        
+        // Set search to the item ID
+        document.getElementById('inventory-search').value = searchItemId;
+        
+        // Clear other filters
+        document.getElementById('category-filter').value = '';
+        document.getElementById('status-filter').value = '';
+        document.getElementById('location-filter').value = '';
+        
+        // Clear the stored search
+        localStorage.removeItem('dashboard_search_item');
+        
+        // Show notification
+        showNotification(`Searching for item ID: ${searchItemId}`, 'info');
+    }
+    
     // Search and filter handlers
     document.getElementById('inventory-search').addEventListener('input', loadInventoryItems);
     document.getElementById('category-filter').addEventListener('change', loadInventoryItems);

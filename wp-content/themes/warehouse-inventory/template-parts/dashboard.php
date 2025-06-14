@@ -9,7 +9,7 @@ $stats = get_dashboard_stats();
 <div class="dashboard-content">
     <!-- Dashboard Stats -->
     <div class="dashboard-stats">
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'all')" title="View all inventory items">
             <div class="stat-icon blue">
                 <i class="fas fa-boxes"></i>
             </div>
@@ -17,7 +17,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Total Items</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'in-stock')" title="View items in stock">
             <div class="stat-icon green">
                 <i class="fas fa-check-circle"></i>
             </div>
@@ -25,7 +25,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">In Stock</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'low-stock')" title="View low stock items">
             <div class="stat-icon yellow">
                 <i class="fas fa-exclamation-triangle"></i>
             </div>
@@ -33,7 +33,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Low Stock</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'out-of-stock')" title="View out of stock items">
             <div class="stat-icon red">
                 <i class="fas fa-times-circle"></i>
             </div>
@@ -41,7 +41,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Out of Stock</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'all')" title="View all items with total value">
             <div class="stat-icon blue">
                 <i class="fas fa-dollar-sign"></i>
             </div>
@@ -49,7 +49,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Total Value</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateToTab('sales')" title="View today's sales">
             <div class="stat-icon green">
                 <i class="fas fa-shopping-cart"></i>
             </div>
@@ -57,7 +57,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Sales Today</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateToTab('tasks')" title="View pending tasks">
             <div class="stat-icon yellow">
                 <i class="fas fa-tasks"></i>
             </div>
@@ -65,7 +65,7 @@ $stats = get_dashboard_stats();
             <div class="stat-label">Pending Tasks</div>
         </div>
         
-        <div class="stat-card">
+        <div class="stat-card clickable" onclick="navigateToTab('categories')" title="Manage categories">
             <div class="stat-icon blue">
                 <i class="fas fa-tags"></i>
             </div>
@@ -190,7 +190,7 @@ $stats = get_dashboard_stats();
             <h2>⚠️ Low Stock Alerts</h2>
             <div class="alert-list">
                 <?php foreach ($low_stock_items as $item): ?>
-                    <div class="alert-item">
+                    <div class="alert-item" onclick="viewItemDetails(<?php echo $item->id; ?>)" title="Click to search for this item">
                         <div class="alert-info">
                             <strong><?php echo esc_html($item->name); ?></strong>
                             <span class="item-category"><?php echo esc_html($item->category_name ?: 'Uncategorized'); ?></span>
@@ -199,7 +199,7 @@ $stats = get_dashboard_stats();
                             <span class="current-stock"><?php echo $item->quantity; ?></span>
                             <span class="min-level">/ <?php echo $item->min_stock_level; ?> min</span>
                         </div>
-                        <button class="btn btn-primary btn-sm" onclick="restockItem(<?php echo $item->id; ?>)">
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); restockItem(<?php echo $item->id; ?>)" title="Restock this item">
                             Restock
                         </button>
                     </div>
@@ -270,6 +270,14 @@ $stats = get_dashboard_stats();
     background: white;
     border-radius: 6px;
     margin-bottom: 0.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.alert-item:hover {
+    background: #f8fafc;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .alert-info strong {
@@ -301,10 +309,22 @@ $stats = get_dashboard_stats();
 </style>
 
 <script>
-// Quick Actions Functions
+// Dashboard navigation functions
 function navigateToTab(tab) {
     console.log('Navigating to tab:', tab);
     window.location.href = '?tab=' + tab;
+}
+
+// Navigate with filter for inventory
+function navigateWithFilter(tab, filter) {
+    console.log('Navigating to tab:', tab, 'with filter:', filter);
+    if (tab === 'inventory') {
+        // Store the filter preference for when the inventory page loads
+        localStorage.setItem('dashboard_filter', filter);
+        window.location.href = '?tab=' + tab;
+    } else {
+        window.location.href = '?tab=' + tab;
+    }
 }
 
 function openModal(modalId) {
@@ -394,6 +414,13 @@ function restockItem(itemId) {
             alert('Error updating stock. Please try again.');
         });
     }
+}
+
+// View item details function
+function viewItemDetails(itemId) {
+    // Navigate to inventory page and search for the specific item
+    localStorage.setItem('dashboard_search_item', itemId);
+    window.location.href = '?tab=inventory';
 }
 
 // Initialize dashboard

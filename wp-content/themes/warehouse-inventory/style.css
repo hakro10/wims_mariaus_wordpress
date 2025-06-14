@@ -101,6 +101,23 @@ body {
     border: 1px solid #e5e7eb;
     padding: 1.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.stat-card.clickable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.stat-card.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #3b82f6;
+}
+
+.stat-card.clickable:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .stat-icon {
@@ -943,6 +960,20 @@ body {
 
     .nav-tab:hover {
         color: #6b7280;
+    }
+
+    /* Remove hover effects on stat cards for touch devices */
+    .stat-card.clickable:hover {
+        transform: none;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border-color: #e5e7eb;
+    }
+
+    /* Ensure active state still works on touch */
+    .stat-card.clickable:active {
+        transform: scale(0.98);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        border-color: #3b82f6;
     }
 
     /* Larger touch targets */
