@@ -32,6 +32,19 @@ $locations = get_all_locations();
                 <option value="untested">Untested</option>
             </select>
             
+            <select id="location-filter" class="form-select">
+                <option value="">All Locations</option>
+                <?php foreach ($locations as $location): ?>
+                    <option value="<?php echo $location->id; ?>" title="<?php echo esc_attr($location->full_path); ?>">
+                        <?php echo str_repeat('└─ ', $location->level - 1) . esc_html($location->name); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            
+            <button class="btn btn-secondary" onclick="clearAllFilters()" title="Clear all search filters">
+                <i class="fas fa-times"></i> Clear Filters
+            </button>
+            
             <button class="btn btn-primary" onclick="openModal('add-item-modal')">
                 <i class="fas fa-plus"></i> Add Item
             </button>
@@ -359,18 +372,69 @@ function loadInventoryItems() {
     const search = document.getElementById('inventory-search').value;
     const category = document.getElementById('category-filter').value;
     const status = document.getElementById('status-filter').value;
+    const location = document.getElementById('location-filter').value;
     
     jQuery.post(warehouse_ajax.ajax_url, {
         action: 'get_inventory_items',
         nonce: warehouse_ajax.nonce,
         search: search,
         category: category,
-        status: status
+        status: status,
+        location: location
     }, function(response) {
         if (response.success) {
             renderInventoryGrid(response.data);
         }
     });
+}
+
+// Function to filter by specific location (can be called from other pages)
+function filterByLocation(locationId, locationName) {
+    // Set the location filter
+    document.getElementById('location-filter').value = locationId;
+    
+    // Clear other filters for focus
+    document.getElementById('inventory-search').value = '';
+    document.getElementById('category-filter').value = '';
+    document.getElementById('status-filter').value = '';
+    
+    // Load items for this location
+    loadInventoryItems();
+    
+    // Show a notification
+    if (locationName) {
+        showNotification(`Showing items in: ${locationName}`, 'info');
+    }
+}
+
+// Simple notification function
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${type === 'info' ? '#3b82f6' : '#10b981'};
+        color: white;
+        border-radius: 6px;
+        z-index: 10000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideInRight 0.3s ease-out;
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideOutRight 0.3s ease-in';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 3000);
 }
 
 // Render inventory grid
@@ -491,6 +555,15 @@ function submitAddItem() {
     });
 }
 
+// Clear all filters function
+function clearAllFilters() {
+    document.getElementById('inventory-search').value = '';
+    document.getElementById('category-filter').value = '';
+    document.getElementById('status-filter').value = '';
+    document.getElementById('location-filter').value = '';
+    loadInventoryItems();
+}
+
 // Modal functions
 function openModal(modalId) {
     document.getElementById(modalId).style.display = 'block';
@@ -531,6 +604,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('inventory-search').addEventListener('input', loadInventoryItems);
     document.getElementById('category-filter').addEventListener('change', loadInventoryItems);
     document.getElementById('status-filter').addEventListener('change', loadInventoryItems);
+    document.getElementById('location-filter').addEventListener('change', loadInventoryItems);
     
     // Modal event listeners
     const xButton = document.getElementById('inventory-modal-close-x');

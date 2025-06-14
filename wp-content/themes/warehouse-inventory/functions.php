@@ -485,6 +485,7 @@ function handle_get_inventory_items() {
     $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
     $category = isset($_POST['category']) ? intval($_POST['category']) : 0;
     $status = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
+    $location = isset($_POST['location']) ? intval($_POST['location']) : 0;
     
     $sql = "SELECT i.*, c.name as category_name, l.name as location_name 
             FROM {$wpdb->prefix}wh_inventory_items i
@@ -499,6 +500,10 @@ function handle_get_inventory_items() {
     
     if ($category > 0) {
         $sql .= $wpdb->prepare(" AND i.category_id = %d", $category);
+    }
+    
+    if ($location > 0) {
+        $sql .= $wpdb->prepare(" AND i.location_id = %d", $location);
     }
     
     if (!empty($status)) {

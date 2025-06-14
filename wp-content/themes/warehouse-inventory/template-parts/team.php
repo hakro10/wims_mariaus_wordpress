@@ -92,129 +92,127 @@ if (!current_user_can('manage_options')) {
 </div>
 
 <!-- Add Member Modal -->
-<div id="add-member-modal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3><i class="fas fa-user-plus"></i> Add Team Member</h3>
-            <span class="close" onclick="closeModal('add-member-modal')">&times;</span>
+<div id="add-member-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 600px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;"><i class="fas fa-user-plus"></i> Add Team Member</h3>
+            <button onclick="closeModal('add-member-modal')" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
-        
-        <form id="add-member-form">
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="add-username">Username *</label>
-                    <input type="text" id="add-username" name="username" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-email">Email *</label>
-                    <input type="email" id="add-email" name="email" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-first-name">First Name *</label>
-                    <input type="text" id="add-first-name" name="first_name" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-last-name">Last Name *</label>
-                    <input type="text" id="add-last-name" name="last_name" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-role">Role *</label>
-                    <select id="add-role" name="role" required>
-                        <option value="warehouse_employee">Warehouse Employee</option>
-                        <option value="warehouse_manager">Warehouse Manager</option>
-                        <option value="administrator">Administrator</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-department">Department</label>
-                    <input type="text" id="add-department" name="department" placeholder="e.g., Operations, Logistics" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-position">Position</label>
-                    <input type="text" id="add-position" name="position" placeholder="e.g., Team Lead, Associate" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="add-phone">Phone</label>
-                    <input type="tel" id="add-phone" name="phone" />
-                </div>
-            </div>
-            
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('add-member-modal')">Cancel</button>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-plus"></i> Add Member
-                </button>
-            </div>
-        </form>
+        <div style="padding: 20px !important;">
+            <form id="add-member-form">
+                <table style="width: 100% !important; border-collapse: collapse !important;">
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Username *</label>
+                            <input type="text" id="add-username" name="username" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Email *</label>
+                            <input type="email" id="add-email" name="email" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">First Name *</label>
+                            <input type="text" id="add-first-name" name="first_name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Last Name *</label>
+                            <input type="text" id="add-last-name" name="last_name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Role *</label>
+                            <select id="add-role" name="role" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="warehouse_employee">Warehouse Employee</option>
+                                <option value="warehouse_manager">Warehouse Manager</option>
+                                <option value="administrator">Administrator</option>
+                            </select>
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Department</label>
+                            <input type="text" id="add-department" name="department" placeholder="e.g., Operations, Logistics" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Position</label>
+                            <input type="text" id="add-position" name="position" placeholder="e.g., Team Lead, Associate" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Phone</label>
+                            <input type="tel" id="add-phone" name="phone" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeModal('add-member-modal')" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="submit" form="add-member-form" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;"><i class="fas fa-plus"></i> Add Member</button>
+        </div>
     </div>
 </div>
 
 <!-- Edit Member Modal -->
-<div id="edit-member-modal" class="modal" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3><i class="fas fa-user-edit"></i> Edit Team Member</h3>
-            <span class="close" onclick="closeModal('edit-member-modal')">&times;</span>
+<div id="edit-member-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 600px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;"><i class="fas fa-user-edit"></i> Edit Team Member</h3>
+            <button onclick="closeModal('edit-member-modal')" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
-        
-        <form id="edit-member-form">
-            <input type="hidden" id="edit-member-id" name="member_id" />
-            
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="edit-first-name">First Name *</label>
-                    <input type="text" id="edit-first-name" name="first_name" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-last-name">Last Name *</label>
-                    <input type="text" id="edit-last-name" name="last_name" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-email">Email *</label>
-                    <input type="email" id="edit-email" name="email" required />
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-role">Role *</label>
-                    <select id="edit-role" name="role" required>
-                        <option value="warehouse_employee">Warehouse Employee</option>
-                        <option value="warehouse_manager">Warehouse Manager</option>
-                        <option value="administrator">Administrator</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-department">Department</label>
-                    <input type="text" id="edit-department" name="department" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-position">Position</label>
-                    <input type="text" id="edit-position" name="position" />
-                </div>
-                
-                <div class="form-group">
-                    <label for="edit-phone">Phone</label>
-                    <input type="tel" id="edit-phone" name="phone" />
-                </div>
-            </div>
-            
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('edit-member-modal')">Cancel</button>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> Update Member
-                </button>
-            </div>
-        </form>
+        <div style="padding: 20px !important;">
+            <form id="edit-member-form">
+                <input type="hidden" id="edit-member-id" name="member_id" />
+                <table style="width: 100% !important; border-collapse: collapse !important;">
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">First Name *</label>
+                            <input type="text" id="edit-first-name" name="first_name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Last Name *</label>
+                            <input type="text" id="edit-last-name" name="last_name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Email *</label>
+                            <input type="email" id="edit-email" name="email" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Role *</label>
+                            <select id="edit-role" name="role" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                <option value="warehouse_employee">Warehouse Employee</option>
+                                <option value="warehouse_manager">Warehouse Manager</option>
+                                <option value="administrator">Administrator</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-right: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Department</label>
+                            <input type="text" id="edit-department" name="department" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important; width: 50% !important; padding-left: 10px !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Position</label>
+                            <input type="text" id="edit-position" name="position" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Phone</label>
+                            <input type="tel" id="edit-phone" name="phone" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeModal('edit-member-modal')" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="submit" form="edit-member-form" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;"><i class="fas fa-save"></i> Update Member</button>
+        </div>
     </div>
 </div>
 
