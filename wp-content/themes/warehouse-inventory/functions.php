@@ -385,6 +385,8 @@ add_action('wp_ajax_add_location', 'handle_add_location');
 add_action('wp_ajax_get_category_items', 'handle_get_category_items');
 add_action('wp_ajax_fix_purchase_prices', 'handle_fix_purchase_prices');
 add_action('wp_ajax_debug_profit_data', 'handle_debug_profit_data');
+add_action('wp_ajax_get_next_item_id', 'handle_get_next_item_id');
+add_action('wp_ajax_update_all_items_format', 'handle_update_all_items_format');
 
 function handle_get_category_items() {
     check_ajax_referer('warehouse_nonce', 'nonce');
@@ -428,6 +430,16 @@ function handle_add_inventory_item() {
     $selling_price = floatval($_POST['selling_price']);
     $total_lot_price = floatval($_POST['total_lot_price']);
     $tested = isset($_POST['tested']) ? 1 : 0;
+    
+    // Check for duplicate Internal ID
+    $existing_item = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table_name} WHERE internal_id = %s",
+        $internal_id
+    ));
+    
+    if ($existing_item) {
+        wp_send_json_error('Item with this Internal ID already exists. Please use a different ID.');
+    }
     
     $result = $wpdb->insert(
         $table_name,
@@ -1166,6 +1178,16 @@ function handle_update_inventory_item() {
     $supplier = sanitize_text_field($_POST['supplier']);
     $tested = isset($_POST['tested']) ? 1 : 0;
     
+    // Check for duplicate Internal ID (excluding current item)
+    $existing_item = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table_name} WHERE internal_id = %s AND id != %d",
+        $internal_id, $item_id
+    ));
+    
+    if ($existing_item) {
+        wp_send_json_error('Item with this Internal ID already exists. Please use a different ID.');
+    }
+    
     // Determine status based on quantity and min stock level
     $status = $quantity == 0 ? 'out-of-stock' : 
              ($min_stock_level > 0 && $quantity <= $min_stock_level ? 'low-stock' : 'in-stock');
@@ -1247,6 +1269,139 @@ function get_all_categories() {
     ");
     
     return $categories;
+}
+
+// Generate next available Item ID with Item- prefix
+function generate_next_item_id() {
+    global $wpdb;
+    
+    // Get all existing internal IDs that start with "Item-"
+    $existing_ids = $wpdb->get_col("
+        SELECT internal_id 
+        FROM {$wpdb->prefix}wh_inventory_items 
+        WHERE internal_id LIKE 'Item-%'
+        ORDER BY internal_id
+    ");
+    
+    // Extract just the numbers from existing IDs
+    $existing_numbers = array();
+    foreach ($existing_ids as $id) {
+        if (preg_match('/^Item-(\d+)$/', $id, $matches)) {
+            $existing_numbers[] = intval($matches[1]);
+        }
+    }
+    
+    // Sort numbers to ensure we get the correct sequence
+    sort($existing_numbers);
+    
+    // Find the next available number
+    $next_number = 1;
+    foreach ($existing_numbers as $number) {
+        if ($next_number == $number) {
+            $next_number++;
+        } else {
+            break;
+        }
+    }
+    
+    return 'Item-' . $next_number;
+}
+
+// AJAX handler to get next available Item ID
+function handle_get_next_item_id() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    $next_id = generate_next_item_id();
+    wp_send_json_success($next_id);
+}
+
+// Update all existing items to use Item- prefix format
+function update_all_items_to_new_format() {
+    global $wpdb;
+    
+    // Get all items that don't already have the Item- prefix
+    $items = $wpdb->get_results("
+        SELECT id, internal_id 
+        FROM {$wpdb->prefix}wh_inventory_items 
+        WHERE internal_id NOT LIKE 'Item-%'
+        ORDER BY id
+    ");
+    
+    if (empty($items)) {
+        return array('success' => true, 'message' => 'All items already have the correct format.');
+    }
+    
+    $updated_count = 0;
+    $id_map = array(); // Track old ID to new ID mapping
+    
+    // Get all existing Item- IDs to avoid conflicts
+    $existing_item_ids = $wpdb->get_col("
+        SELECT internal_id 
+        FROM {$wpdb->prefix}wh_inventory_items 
+        WHERE internal_id LIKE 'Item-%'
+    ");
+    
+    $existing_numbers = array();
+    foreach ($existing_item_ids as $id) {
+        if (preg_match('/^Item-(\d+)$/', $id, $matches)) {
+            $existing_numbers[] = intval($matches[1]);
+        }
+    }
+    sort($existing_numbers);
+    
+    // Start numbering from 1
+    $next_number = 1;
+    
+    foreach ($items as $item) {
+        // Find next available number
+        while (in_array($next_number, $existing_numbers)) {
+            $next_number++;
+        }
+        
+        $new_id = 'Item-' . $next_number;
+        
+        // Update the item
+        $result = $wpdb->update(
+            $wpdb->prefix . 'wh_inventory_items',
+            array('internal_id' => $new_id),
+            array('id' => $item->id),
+            array('%s'),
+            array('%d')
+        );
+        
+        if ($result !== false) {
+            $id_map[$item->internal_id] = $new_id;
+            $existing_numbers[] = $next_number; // Add to existing numbers to avoid conflicts
+            $updated_count++;
+        }
+        
+        $next_number++;
+    }
+    
+    return array(
+        'success' => true, 
+        'updated_count' => $updated_count,
+        'total_items' => count($items),
+        'id_map' => $id_map,
+        'message' => "Successfully updated {$updated_count} items to new Item- format."
+    );
+}
+
+// AJAX handler to update all items to new format
+function handle_update_all_items_format() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized');
+    }
+    
+    $result = update_all_items_to_new_format();
+    
+    if ($result['success']) {
+        wp_send_json_success($result);
+    } else {
+        wp_send_json_error($result['message']);
+    }
 }
 
 // Get all locations with hierarchy

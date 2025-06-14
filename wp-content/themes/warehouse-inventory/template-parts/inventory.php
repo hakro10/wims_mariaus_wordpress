@@ -48,6 +48,10 @@ $locations = get_all_locations();
             <button class="btn btn-primary" onclick="openModal('add-item-modal')">
                 <i class="fas fa-plus"></i> Add Item
             </button>
+            
+            <button class="btn btn-secondary" onclick="updateAllItemsFormat()" title="Update all existing items to use Item- prefix format">
+                <i class="fas fa-sync-alt"></i> Update Item IDs
+            </button>
         </div>
     </div>
 
@@ -77,8 +81,15 @@ $locations = get_all_locations();
                     <tr>
                         <td style="padding:10px 0;">
                             <label style="display:block;margin-bottom:5px;font-weight:bold;">Internal ID *</label>
-                            <input type="text" name="internal_id" required placeholder="Enter internal ID"
-                                   style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                            <div style="position:relative;">
+                                <input type="text" name="internal_id" id="internal-id-input" required placeholder="Auto-generated or enter number"
+                                       style="width:100%;padding:10px 10px 10px 60px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6b7280;font-weight:500;pointer-events:none;">Item-</span>
+                                <button type="button" id="generate-id-btn" onclick="generateNextItemId(true)" 
+                                        style="position:absolute;right:5px;top:5px;padding:5px 8px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;font-size:12px;"
+                                        title="Generate next available ID">Auto</button>
+                            </div>
+                            <small style="color:#6b7280;font-style:italic;">Enter only the number part (e.g., 45 for Item-45) or click Auto to generate</small>
                         </td>
                     </tr>
                     <tr>
@@ -537,6 +548,11 @@ function submitAddItem() {
         data[key] = value;
     }
     
+    // Ensure Internal ID has Item- prefix
+    if (data.internal_id && !data.internal_id.startsWith('Item-')) {
+        data.internal_id = 'Item-' + data.internal_id;
+    }
+    
     // Don't send purchase_price in edit mode to prevent changes
     if (isEditMode) {
         delete data.purchase_price;
@@ -548,9 +564,9 @@ function submitAddItem() {
         if (response.success) {
             closeModal('add-item-modal');
             loadInventoryItems();
-            alert(isEditMode ? 'Item updated successfully!' : 'Item added successfully!');
+            showNotification(isEditMode ? 'Item updated successfully!' : 'Item added successfully!', 'success');
         } else {
-            alert('Error: ' + response.data);
+            showNotification('Error: ' + response.data, 'error');
         }
     });
 }
@@ -567,6 +583,20 @@ function clearAllFilters() {
 // Modal functions
 function openModal(modalId) {
     document.getElementById(modalId).style.display = 'block';
+    
+    // Auto-generate ID when opening add item modal for new items
+    if (modalId === 'add-item-modal') {
+        const submitBtn = document.getElementById('inventory-modal-submit-btn');
+        const isEditMode = submitBtn.getAttribute('data-mode') === 'edit';
+        
+        // Only auto-generate for new items, not when editing
+        if (!isEditMode) {
+            const input = document.getElementById('internal-id-input');
+            if (input && !input.value.trim()) {
+                generateNextItemId(false); // Don't show notifications for auto-generation
+            }
+        }
+    }
 }
 
 function closeModal(modalId) {
@@ -590,6 +620,13 @@ function resetAddItemModal() {
     submitBtn.removeAttribute('data-mode');
     submitBtn.removeAttribute('data-item-id');
     
+    // Clear the internal ID field
+    const internalIdInput = document.getElementById('internal-id-input');
+    if (internalIdInput) {
+        internalIdInput.value = '';
+        internalIdInput.removeAttribute('data-has-value');
+    }
+    
     // Reset purchase price field to editable
     const purchasePriceInput = document.getElementById('purchase-price-input');
     purchasePriceInput.readOnly = false;
@@ -598,8 +635,111 @@ function resetAddItemModal() {
     purchasePriceInput.title = '';
 }
 
+// Auto-generate next available Item ID
+function generateNextItemId(showNotifications = true) {
+    const button = document.getElementById('generate-id-btn');
+    const input = document.getElementById('internal-id-input');
+    
+    // Show loading state
+    if (button) {
+        button.textContent = '...';
+        button.disabled = true;
+    }
+    
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'get_next_item_id',
+        nonce: warehouse_ajax.nonce
+    }, function(response) {
+        if (response.success) {
+            // Extract just the number part from Item-X format
+            const fullId = response.data;
+            const numberPart = fullId.replace('Item-', '');
+            input.value = numberPart;
+            
+            // Only show notification if explicitly requested (manual button click)
+            if (showNotifications) {
+                showNotification(`Generated ID: ${fullId}`, 'success');
+            }
+        } else {
+            if (showNotifications) {
+                showNotification('Failed to generate ID', 'error');
+            }
+        }
+    }).always(function() {
+        // Reset button state
+        if (button) {
+            button.textContent = 'Auto';
+            button.disabled = false;
+        }
+    });
+}
+
+// Handle Internal ID input formatting
+function setupInternalIdHandling() {
+    const input = document.getElementById('internal-id-input');
+    
+    if (!input) return;
+    
+    // Handle input formatting
+    input.addEventListener('input', function(e) {
+        let value = e.target.value;
+        
+        // Remove any non-numeric characters except for existing Item- prefix
+        value = value.replace(/[^0-9]/g, '');
+        
+        // Update the input with just the number
+        e.target.value = value;
+    });
+    
+    // Handle form submission to add prefix
+    const form = document.getElementById('add-item-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const internalIdValue = input.value.trim();
+            if (internalIdValue && !internalIdValue.startsWith('Item-')) {
+                // Add the Item- prefix if not already present
+                input.value = 'Item-' + internalIdValue;
+            }
+        });
+    }
+}
+
+// Update all existing items to use Item- prefix format
+function updateAllItemsFormat() {
+    if (!confirm('This will update ALL existing items to use the new Item- prefix format (e.g., Item-1, Item-2, etc.). This action cannot be undone. Continue?')) {
+        return;
+    }
+    
+    showNotification('Updating all items to new format...', 'info');
+    
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'update_all_items_format',
+        nonce: warehouse_ajax.nonce
+    }, function(response) {
+        if (response.success) {
+            const data = response.data;
+            showNotification(`Success! Updated ${data.updated_count} of ${data.total_items} items to new Item- format.`, 'success');
+            
+            // Reload the inventory to show updated IDs
+            setTimeout(() => {
+                loadInventoryItems();
+            }, 2000);
+            
+            // Show detailed results in console for debugging
+            console.log('ID Update Results:', data.id_map);
+        } else {
+            showNotification('Error updating items: ' + response.data, 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error while updating items', 'error');
+    });
+}
+
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', function() {
+    // Setup internal ID handling
+    setupInternalIdHandling();
+    
     // Check for dashboard filter on page load
     const dashboardFilter = localStorage.getItem('dashboard_filter');
     if (dashboardFilter) {
@@ -757,7 +897,16 @@ function openEditModal(item) {
     
     // Populate form fields with existing data
     document.querySelector('input[name="name"]').value = item.name || '';
-    document.querySelector('input[name="internal_id"]').value = item.internal_id || '';
+    
+    // Handle internal ID - extract number part if it has Item- prefix
+    const internalIdInput = document.querySelector('input[name="internal_id"]');
+    let internalIdValue = item.internal_id || '';
+    if (internalIdValue.startsWith('Item-')) {
+        internalIdValue = internalIdValue.replace('Item-', '');
+    }
+    internalIdInput.value = internalIdValue;
+    internalIdInput.dataset.hasValue = 'true'; // Prevent auto-generation
+    
     document.querySelector('textarea[name="description"]').value = item.description || '';
     document.querySelector('select[name="category_id"]').value = item.category_id || '';
     document.querySelector('select[name="location_id"]').value = item.location_id || '';
