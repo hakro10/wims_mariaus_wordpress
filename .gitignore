@@ -53,4 +53,7 @@ npm-debug.log*
 
 # Temporary files
 tmp/
-temp/ 
+temp/ # Debug files
+debug-*.php
+test-*.php
+create-*.php
