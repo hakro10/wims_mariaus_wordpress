@@ -10,1220 +10,55 @@ if (!defined('ABSPATH')) {
 
 // Theme setup
 function warehouse_inventory_setup() {
-    // Create tables
-    warehouse_inventory_create_tables();
+    // Add theme support for various features
+    add_theme_support('title-tag');
+    add_theme_support('post-thumbnails');
+    add_theme_support('html5', array(
+        'search-form',
+        'comment-form',
+        'comment-list',
+        'gallery',
+        'caption',
+    ));
     
-    // Update table structures
-    update_sales_table_structure();
-    update_inventory_items_table_structure();
-    
-    // Create profit tracking table
-    create_profit_tracking_table();
-    
-    // Add roles and capabilities
-    add_warehouse_roles();
-    add_warehouse_capabilities();
-    
-    // Populate sample data if needed
-    // populate_sample_profit_data();
+    // Register navigation menus
+    register_nav_menus(array(
+        'primary' => __('Primary Menu', 'warehouse-inventory'),
+        'footer' => __('Footer Menu', 'warehouse-inventory'),
+    ));
 }
 add_action('after_setup_theme', 'warehouse_inventory_setup');
 
 // Enqueue styles and scripts
 function warehouse_inventory_scripts() {
-    wp_enqueue_style('warehouse-inventory-style', get_stylesheet_uri(), array(), '1.0.0');
+    // Enqueue main theme styles (higher priority to override plugin styles)
+    wp_enqueue_style('warehouse-inventory-style', get_stylesheet_uri(), array(), '2.0.0');
+    wp_enqueue_style('warehouse-inventory-assets', get_template_directory_uri() . '/assets/css/style.css', array(), '2.6.0');
     wp_enqueue_script('warehouse-inventory-script', get_template_directory_uri() . '/assets/js/warehouse.js', array('jquery'), '1.0.0', true);
-    
-    // Enqueue QR scanner for mobile optimization
-    wp_enqueue_script('warehouse-qr-scanner', get_template_directory_uri() . '/assets/js/qr-scanner.js', array(), '1.0.0', true);
     
     // Localize script for AJAX
     wp_localize_script('warehouse-inventory-script', 'warehouse_ajax', array(
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('warehouse_nonce'),
+        'current_user_id' => get_current_user_id(),
     ));
 }
 add_action('wp_enqueue_scripts', 'warehouse_inventory_scripts');
 
-// Redirect users to warehouse dashboard after login
-function warehouse_login_redirect($redirect_to, $request, $user) {
-    // Check if user has errors (failed login)
-    if (isset($user->errors) && !empty($user->errors)) {
-        return $redirect_to;
-    }
-    
-    // Check if user has warehouse access capabilities
-    if (isset($user->ID) && (
-        user_can($user->ID, 'manage_warehouse') || 
-        user_can($user->ID, 'view_warehouse') || 
-        user_can($user->ID, 'manage_options') ||
-        in_array('administrator', $user->roles) ||
-        in_array('warehouse_manager', $user->roles) ||
-        in_array('warehouse_staff', $user->roles)
-    )) {
-        // Redirect to warehouse dashboard
-        return home_url('/?tab=dashboard');
-    }
-    
-    // For other users, use default redirect
-    return $redirect_to;
+// Remove custom database tables creation from theme activation
+function warehouse_inventory_remove_create_tables() {
+    remove_action('after_switch_theme', 'warehouse_inventory_create_tables');
 }
-add_filter('login_redirect', 'warehouse_login_redirect', 10, 3);
+add_action('after_switch_theme', 'warehouse_inventory_remove_create_tables', 1);
 
-// Create custom database tables on theme activation
-function warehouse_inventory_create_tables() {
-    global $wpdb;
-    
-    $charset_collate = $wpdb->get_charset_collate();
-    
-    // Inventory Items table
-    $table_name = $wpdb->prefix . 'wh_inventory_items';
-    $sql = "CREATE TABLE $table_name (
-        id mediumint(9) NOT NULL AUTO_INCREMENT,
-        name varchar(255) NOT NULL,
-        internal_id varchar(100) NOT NULL UNIQUE,
-        serial_number varchar(100),
-        description text,
-        category_id mediumint(9),
-        location_id mediumint(9),
-        quantity int(11) NOT NULL DEFAULT 0,
-        min_stock_level int(11) DEFAULT 1,
-        purchase_price decimal(10,2),
-        selling_price decimal(10,2),
-        supplier varchar(255),
-        status varchar(50) DEFAULT 'in-stock',
-        qr_code_image text,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        created_by mediumint(9),
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-    
-    // Categories table
-    $categories_table = $wpdb->prefix . 'wh_categories';
-    $sql .= "CREATE TABLE $categories_table (
-        id mediumint(9) NOT NULL AUTO_INCREMENT,
-        name varchar(255) NOT NULL,
-        description text,
-        color varchar(7) DEFAULT '#3b82f6',
-        item_count int(11) DEFAULT 0,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-    
-    // Locations table
-    $locations_table = $wpdb->prefix . 'wh_locations';
-    $sql .= "CREATE TABLE $locations_table (
-        id mediumint(9) NOT NULL AUTO_INCREMENT,
-        name varchar(255) NOT NULL,
-        type varchar(50) DEFAULT 'warehouse',
-        description text,
-        qr_code_image text,
-        parent_id mediumint(9),
-        level int(11) DEFAULT 1,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-    
-    // Sales table
-    $sales_table = $wpdb->prefix . 'wh_sales';
-    $sql .= "CREATE TABLE $sales_table (
-        id mediumint(9) NOT NULL AUTO_INCREMENT,
-        inventory_item_id mediumint(9) NOT NULL,
-        quantity_sold int(11) NOT NULL,
-        unit_price decimal(10,2) NOT NULL,
-        total_amount decimal(10,2) NOT NULL,
-        customer_name varchar(255),
-        customer_email varchar(255),
-        sale_date datetime DEFAULT CURRENT_TIMESTAMP,
-        sold_by mediumint(9),
-        notes text,
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-    
-    // Tasks table
-    $tasks_table = $wpdb->prefix . 'wh_tasks';
-    $sql .= "CREATE TABLE $tasks_table (
-        id mediumint(9) NOT NULL AUTO_INCREMENT,
-        title varchar(255) NOT NULL,
-        description text,
-        status varchar(50) DEFAULT 'pending',
-        priority varchar(20) DEFAULT 'medium',
-        assigned_to mediumint(9),
-        due_date datetime,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP,
-        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        created_by mediumint(9),
-        PRIMARY KEY (id)
-    ) $charset_collate;";
-    
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($sql);
-    
-    // Insert default categories (only if they don't exist)
-    $existing_categories = $wpdb->get_var("SELECT COUNT(*) FROM $categories_table");
-    if ($existing_categories == 0) {
-        $wpdb->insert($categories_table, array(
-            'name' => 'Electronics',
-            'description' => 'Electronic devices and components',
-            'color' => '#3b82f6'
-        ));
-        
-        $wpdb->insert($categories_table, array(
-            'name' => 'Tools',
-            'description' => 'Hand tools and equipment',
-            'color' => '#10b981'
-        ));
-        
-        $wpdb->insert($categories_table, array(
-            'name' => 'Office Supplies',
-            'description' => 'Office equipment and supplies',
-            'color' => '#f59e0b'
-        ));
-    }
-    
-    // Insert default locations (only if they don't exist)
-    $existing_locations = $wpdb->get_var("SELECT COUNT(*) FROM $locations_table");
-    if ($existing_locations == 0) {
-        $wpdb->insert($locations_table, array(
-            'name' => 'Main Warehouse',
-            'type' => 'warehouse',
-            'description' => 'Primary storage facility',
-            'level' => 1
-        ));
-        
-        $wpdb->insert($locations_table, array(
-            'name' => 'Section A',
-            'type' => 'section',
-            'description' => 'Electronics section',
-            'parent_id' => 1,
-            'level' => 2
-        ));
-    }
+// Remove database migration function from theme
+function warehouse_inventory_remove_migrate_database() {
+    remove_action('after_switch_theme', 'warehouse_inventory_migrate_database');
+    remove_action('admin_init', 'warehouse_inventory_migrate_database');
 }
+add_action('after_switch_theme', 'warehouse_inventory_remove_migrate_database', 1);
 
-// Hook into theme activation
-add_action('after_switch_theme', 'warehouse_inventory_create_tables');
-
-// Function to update sales table structure
-function update_sales_table_structure() {
-    global $wpdb;
-    
-    $sales_table = $wpdb->prefix . 'wh_sales';
-    
-    // Check if columns exist before adding them
-    $columns = $wpdb->get_results("SHOW COLUMNS FROM $sales_table");
-    $existing_columns = array_column($columns, 'Field');
-    
-    $columns_to_add = array(
-        'customer_phone' => "ALTER TABLE $sales_table ADD COLUMN customer_phone VARCHAR(20) AFTER customer_email",
-        'customer_address' => "ALTER TABLE $sales_table ADD COLUMN customer_address TEXT AFTER customer_phone",
-        'warranty_period' => "ALTER TABLE $sales_table ADD COLUMN warranty_period VARCHAR(50) AFTER payment_status"
-    );
-    
-    foreach ($columns_to_add as $column => $sql) {
-        if (!in_array($column, $existing_columns)) {
-            $wpdb->query($sql);
-        }
-    }
-}
-
-function update_inventory_items_table_structure() {
-    global $wpdb;
-    
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    
-    // Check if columns exist before adding them
-    $columns = $wpdb->get_results("SHOW COLUMNS FROM $items_table");
-    $existing_columns = array_column($columns, 'Field');
-    
-    if (!in_array('tested', $existing_columns)) {
-        $wpdb->query("ALTER TABLE $items_table ADD COLUMN tested BOOLEAN DEFAULT FALSE AFTER status");
-    }
-    
-    if (!in_array('total_lot_price', $existing_columns)) {
-        $wpdb->query("ALTER TABLE $items_table ADD COLUMN total_lot_price DECIMAL(10,2) DEFAULT NULL AFTER selling_price");
-    }
-}
-
-function update_locations_table_structure() {
-    global $wpdb;
-    
-    $locations_table = $wpdb->prefix . 'wh_locations';
-    
-    // Check if columns exist before adding them
-    $columns = $wpdb->get_results("SHOW COLUMNS FROM $locations_table");
-    $existing_columns = array_column($columns, 'Field');
-    
-    if (!in_array('code', $existing_columns)) {
-        $wpdb->query("ALTER TABLE $locations_table ADD COLUMN code VARCHAR(50) AFTER name");
-    }
-}
-
-// Run table update on theme activation and admin init
-add_action('after_switch_theme', 'update_sales_table_structure');
-add_action('admin_init', 'update_sales_table_structure');
-add_action('after_switch_theme', 'update_inventory_items_table_structure');
-add_action('admin_init', 'update_inventory_items_table_structure');
-add_action('after_switch_theme', 'update_locations_table_structure');
-add_action('admin_init', 'update_locations_table_structure');
-
-// Function to create profit tracking table
-function create_profit_tracking_table() {
-    global $wpdb;
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
-    
-    // Check if table exists
-    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$profit_table'");
-    
-    if (!$table_exists) {
-        $charset_collate = $wpdb->get_charset_collate();
-        
-        $sql = "CREATE TABLE $profit_table (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            date_period date NOT NULL,
-            period_type varchar(10) NOT NULL DEFAULT 'daily',
-            total_sales decimal(10,2) DEFAULT 0,
-            total_cost decimal(10,2) DEFAULT 0,
-            total_profit decimal(10,2) DEFAULT 0,
-            profit_margin decimal(5,2) DEFAULT 0,
-            sales_count int(11) DEFAULT 0,
-            items_sold int(11) DEFAULT 0,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY unique_period (date_period, period_type),
-            INDEX idx_date (date_period),
-            INDEX idx_type (period_type)
-        ) $charset_collate;";
-        
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
-        
-        error_log("Profit tracking table created successfully");
-    }
-}
-
-// Run profit table creation
-add_action('after_switch_theme', 'create_profit_tracking_table');
-add_action('admin_init', 'create_profit_tracking_table');
-add_action('admin_init', 'populate_sample_profit_data');
-
-// Function to populate sample profit data (for testing)
-function populate_sample_profit_data() {
-    global $wpdb;
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
-    
-    // Check if we already have data
-    $existing_data = $wpdb->get_var("SELECT COUNT(*) FROM $profit_table");
-    if ($existing_data > 0) {
-        return; // Don't add sample data if we already have records
-    }
-    
-    // Add sample daily data for the last 7 days
-    for ($i = 6; $i >= 0; $i--) {
-        $date = date('Y-m-d', strtotime("-$i days"));
-        $sales = rand(500, 2000);
-        $cost = $sales * 0.6; // 60% cost ratio
-        $profit = $sales - $cost;
-        $margin = ($profit / $sales) * 100;
-        
-        $wpdb->insert(
-            $profit_table,
-            array(
-                'date_period' => $date,
-                'period_type' => 'daily',
-                'total_sales' => $sales,
-                'total_cost' => $cost,
-                'total_profit' => $profit,
-                'profit_margin' => $margin,
-                'sales_count' => rand(3, 8),
-                'items_sold' => rand(5, 15)
-            ),
-            array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
-        );
-    }
-    
-    // Add sample monthly data for current month
-    $this_month = date('Y-m-01');
-    $monthly_sales = rand(8000, 15000);
-    $monthly_cost = $monthly_sales * 0.6;
-    $monthly_profit = $monthly_sales - $monthly_cost;
-    $monthly_margin = ($monthly_profit / $monthly_sales) * 100;
-    
-    $wpdb->insert(
-        $profit_table,
-        array(
-            'date_period' => $this_month,
-            'period_type' => 'monthly',
-            'total_sales' => $monthly_sales,
-            'total_cost' => $monthly_cost,
-            'total_profit' => $monthly_profit,
-            'profit_margin' => $monthly_margin,
-            'sales_count' => rand(25, 45),
-            'items_sold' => rand(50, 100)
-        ),
-        array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
-    );
-}
-
-// AJAX handlers for inventory operations
-add_action('wp_ajax_add_inventory_item', 'handle_add_inventory_item');
-add_action('wp_ajax_update_inventory_item', 'handle_update_inventory_item');
-add_action('wp_ajax_delete_inventory_item', 'handle_delete_inventory_item');
-add_action('wp_ajax_sell_inventory_item', 'handle_sell_inventory_item');
-add_action('wp_ajax_sell_inventory_item_detailed', 'handle_sell_inventory_item_detailed');
-add_action('wp_ajax_get_inventory_item', 'handle_get_inventory_item');
-add_action('wp_ajax_get_inventory_items', 'handle_get_inventory_items');
-add_action('wp_ajax_get_sale_details', 'handle_get_sale_details');
-add_action('wp_ajax_record_sale', 'handle_record_sale');
-add_action('wp_ajax_get_profit_data', 'handle_get_profit_data');
-add_action('wp_ajax_rebuild_profit_data', 'handle_rebuild_profit_data');
-add_action('wp_ajax_add_category', 'handle_add_category');
-add_action('wp_ajax_delete_category', 'handle_delete_category');
-add_action('wp_ajax_add_location', 'handle_add_location');
-add_action('wp_ajax_get_category_items', 'handle_get_category_items');
-add_action('wp_ajax_fix_purchase_prices', 'handle_fix_purchase_prices');
-add_action('wp_ajax_debug_profit_data', 'handle_debug_profit_data');
-add_action('wp_ajax_get_next_item_id', 'handle_get_next_item_id');
-add_action('wp_ajax_update_all_items_format', 'handle_update_all_items_format');
-
-function handle_get_category_items() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('view_warehouse')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $category_id = intval($_POST['category_id']);
-    
-    $items = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}wh_inventory_items WHERE category_id = %d",
-        $category_id
-    ));
-    
-    if ($items) {
-        wp_send_json_success($items);
-    } else {
-        wp_send_json_error('No items found for this category');
-    }
-}
-
-function handle_add_inventory_item() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_posts')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'wh_inventory_items';
-    
-    $name = sanitize_text_field($_POST['name']);
-    $internal_id = sanitize_text_field($_POST['internal_id']);
-    $description = sanitize_textarea_field($_POST['description']);
-    $category_id = intval($_POST['category_id']);
-    $location_id = intval($_POST['location_id']);
-    $quantity = intval($_POST['quantity']);
-    $purchase_price = floatval($_POST['purchase_price']);
-    $selling_price = floatval($_POST['selling_price']);
-    $total_lot_price = floatval($_POST['total_lot_price']);
-    $tested = isset($_POST['tested']) ? 1 : 0;
-    
-    // Check for duplicate Internal ID
-    $existing_item = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE internal_id = %s",
-        $internal_id
-    ));
-    
-    if ($existing_item) {
-        wp_send_json_error('Item with this Internal ID already exists. Please use a different ID.');
-    }
-    
-    $result = $wpdb->insert(
-        $table_name,
-        array(
-            'name' => $name,
-            'internal_id' => $internal_id,
-            'description' => $description,
-            'category_id' => $category_id,
-            'location_id' => $location_id,
-            'quantity' => $quantity,
-            'purchase_price' => $purchase_price,
-            'selling_price' => $selling_price,
-            'total_lot_price' => $total_lot_price,
-            'created_by' => get_current_user_id(),
-            'status' => $quantity > 0 ? 'in-stock' : 'out-of-stock',
-            'tested' => $tested
-        )
-    );
-    
-    if ($result) {
-        $item_id = $wpdb->insert_id;
-        
-        // Automatically generate QR code for the new item
-        $qr_data = json_encode([
-            'type' => 'item',
-            'id' => $item_id,
-            'internal_id' => $internal_id,
-            'name' => $name,
-            'quantity' => $quantity,
-            'tested' => $tested
-        ]);
-        
-        $qr_url = generate_qr_code_url($qr_data);
-        
-        // Update the item with QR code URL
-        $wpdb->update(
-            $table_name,
-            array('qr_code_image' => $qr_url),
-            array('id' => $item_id),
-            array('%s'),
-            array('%d')
-        );
-        
-        wp_send_json_success(array('id' => $item_id, 'qr_code' => $qr_url));
-    } else {
-        wp_send_json_error('Failed to add item');
-    }
-}
-
-function handle_get_inventory_items() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    global $wpdb;
-    
-    $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
-    $category = isset($_POST['category']) ? intval($_POST['category']) : 0;
-    $status = isset($_POST['status']) ? sanitize_text_field($_POST['status']) : '';
-    $location = isset($_POST['location']) ? intval($_POST['location']) : 0;
-    
-    $sql = "SELECT i.*, c.name as category_name, l.name as location_name 
-            FROM {$wpdb->prefix}wh_inventory_items i
-            LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
-            LEFT JOIN {$wpdb->prefix}wh_locations l ON i.location_id = l.id
-            WHERE 1=1";
-    
-    if (!empty($search)) {
-        $sql .= $wpdb->prepare(" AND (i.name LIKE %s OR i.internal_id LIKE %s)", 
-            '%' . $search . '%', '%' . $search . '%');
-    }
-    
-    if ($category > 0) {
-        $sql .= $wpdb->prepare(" AND i.category_id = %d", $category);
-    }
-    
-    if ($location > 0) {
-        $sql .= $wpdb->prepare(" AND i.location_id = %d", $location);
-    }
-    
-    if (!empty($status)) {
-        if ($status === 'tested') {
-            $sql .= " AND i.tested = 1";
-        } elseif ($status === 'untested') {
-            $sql .= " AND (i.tested = 0 OR i.tested IS NULL)";
-        } else {
-            // Handle stock status filters (in-stock, low-stock, out-of-stock)
-            $sql .= $wpdb->prepare(" AND i.status = %s", $status);
-        }
-    }
-    
-    $sql .= " ORDER BY i.created_at DESC";
-    
-    $items = $wpdb->get_results($sql);
-    
-    // Add full location path to each item
-    foreach ($items as $item) {
-        if ($item->location_id) {
-            $item->location_path = get_location_path($item->location_id);
-        } else {
-            $item->location_path = '';
-        }
-    }
-    
-    wp_send_json_success($items);
-}
-
-function handle_get_sale_details() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('view_warehouse')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $sale_id = intval($_POST['sale_id']);
-    
-    $sale = $wpdb->get_row($wpdb->prepare(
-        "SELECT s.*, i.name as item_name, i.internal_id, u.display_name as sold_by_name
-         FROM {$wpdb->prefix}wh_sales s
-         LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
-         LEFT JOIN {$wpdb->prefix}users u ON s.sold_by = u.ID
-         WHERE s.id = %d", 
-        $sale_id
-    ));
-    
-    if ($sale) {
-        wp_send_json_success($sale);
-    } else {
-        wp_send_json_error('Sale not found');
-    }
-}
-
-function handle_record_sale() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    $sales_table = $wpdb->prefix . 'wh_sales';
-    
-    $item_id = intval($_POST['item_id']);
-    $quantity_sold = intval($_POST['quantity']);
-    $unit_price = floatval($_POST['unit_price']);
-    $customer_name = sanitize_text_field($_POST['customer_name']);
-    $customer_email = sanitize_email($_POST['customer_email']);
-    $payment_method = sanitize_text_field($_POST['payment_method']);
-    $notes = sanitize_textarea_field($_POST['notes']);
-    
-    // Get current item details
-    $item = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $items_table WHERE id = %d", 
-        $item_id
-    ));
-    
-    if (!$item) {
-        wp_send_json_error('Item not found');
-        return;
-    }
-    
-    if ($item->quantity < $quantity_sold) {
-        wp_send_json_error('Not enough stock available. Current stock: ' . $item->quantity);
-        return;
-    }
-    
-    // Generate sale number
-    $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
-    
-    // Ensure unique sale number
-    while ($wpdb->get_var($wpdb->prepare("SELECT id FROM $sales_table WHERE sale_number = %s", $sale_number))) {
-        $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
-    }
-    
-    $total_amount = $quantity_sold * $unit_price;
-    
-    // Start transaction
-    $wpdb->query('START TRANSACTION');
-    
-    try {
-        // Record the sale
-        $sale_result = $wpdb->insert(
-            $sales_table,
-            array(
-                'sale_number' => $sale_number,
-                'item_id' => $item_id,
-                'quantity_sold' => $quantity_sold,
-                'unit_price' => $unit_price,
-                'total_amount' => $total_amount,
-                'customer_name' => $customer_name,
-                'customer_email' => $customer_email,
-                'payment_method' => $payment_method,
-                'payment_status' => 'completed',
-                'notes' => $notes,
-                'sold_by' => get_current_user_id(),
-                'sale_date' => current_time('mysql')
-            )
-        );
-        
-        if (!$sale_result) {
-            throw new Exception('Failed to record sale');
-        }
-        
-        // Update inventory
-        $new_quantity = $item->quantity - $quantity_sold;
-        $new_status = $new_quantity == 0 ? 'out-of-stock' : 
-                     ($new_quantity <= $item->min_stock_level ? 'low-stock' : 'in-stock');
-        
-        $update_result = $wpdb->update(
-            $items_table,
-            array(
-                'quantity' => $new_quantity,
-                'status' => $new_status
-            ),
-            array('id' => $item_id),
-            array('%d', '%s'),
-            array('%d')
-        );
-        
-        if ($update_result === false) {
-            throw new Exception('Failed to update inventory');
-        }
-        
-        // Commit transaction
-        $wpdb->query('COMMIT');
-        
-        // Update profit tracking after successful sale - use current time for consistency
-        $sale_date = current_time('mysql');
-        update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date);
-        
-        wp_send_json_success(array(
-            'sale_number' => $sale_number,
-            'message' => 'Sale recorded successfully!'
-        ));
-        
-    } catch (Exception $e) {
-        // Rollback transaction
-        $wpdb->query('ROLLBACK');
-        wp_send_json_error('Transaction failed: ' . $e->getMessage());
-    }
-}
-
-// Function to update profit tracking
-function update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date = null) {
-    global $wpdb;
-    
-    // Get item cost price
-    $item = $wpdb->get_row($wpdb->prepare(
-        "SELECT purchase_price FROM {$wpdb->prefix}wh_inventory_items WHERE id = %d", 
-        $item_id
-    ));
-    
-    error_log("Profit tracking debug - Item ID: $item_id, Item data: " . print_r($item, true));
-    
-    if (!$item || !$item->purchase_price) {
-        error_log("Profit tracking skipped - No item found or no purchase price. Item: " . print_r($item, true));
-        return; // Can't calculate profit without cost price
-    }
-    
-    $cost_price = $item->purchase_price;
-    $sale_amount = $quantity_sold * $unit_price;
-    $cost_amount = $quantity_sold * $cost_price;
-    $profit_amount = $sale_amount - $cost_amount;
-    
-    error_log("Profit calculation - Sale: $sale_amount, Cost: $cost_amount, Profit: $profit_amount");
-    
-    // Use provided sale date or current date - ensure consistent timezone handling
-    if ($sale_date) {
-        // Convert to WordPress timezone
-        $sale_date_obj = new DateTime($sale_date, new DateTimeZone('UTC'));
-        $sale_date_obj->setTimezone(new DateTimeZone(wp_timezone_string()));
-        $today = $sale_date_obj->format('Y-m-d');
-        $this_month = $sale_date_obj->format('Y-m-01');
-        
-        // Debug logging
-        error_log("Profit tracking - Sale date: $sale_date, Converted to: $today, Month: $this_month");
-    } else {
-        $today = current_time('Y-m-d');
-        $this_month = current_time('Y-m-01');
-        
-        // Debug logging
-        error_log("Profit tracking - Using current time: $today, Month: $this_month");
-    }
-    
-    // Update daily profit
-    update_profit_record($today, 'daily', $sale_amount, $cost_amount, $profit_amount, 1, $quantity_sold);
-    
-    // Update monthly profit
-    update_profit_record($this_month, 'monthly', $sale_amount, $cost_amount, $profit_amount, 1, $quantity_sold);
-}
-
-function update_profit_record($date_period, $period_type, $sale_amount, $cost_amount, $profit_amount, $sales_count, $items_sold) {
-    global $wpdb;
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
-    
-    error_log("Update profit record - Period: $date_period, Type: $period_type, Sale: $sale_amount, Cost: $cost_amount, Profit: $profit_amount");
-    
-    // Check if record exists
-    $existing = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
-        $date_period, $period_type
-    ));
-    
-    if ($existing) {
-        // Update existing record
-        $new_total_sales = $existing->total_sales + $sale_amount;
-        $new_total_cost = $existing->total_cost + $cost_amount;
-        $new_total_profit = $existing->total_profit + $profit_amount;
-        $new_sales_count = $existing->sales_count + $sales_count;
-        $new_items_sold = $existing->items_sold + $items_sold;
-        $new_profit_margin = $new_total_sales > 0 ? ($new_total_profit / $new_total_sales) * 100 : 0;
-        
-        error_log("Updating existing record - New Sales: $new_total_sales, New Cost: $new_total_cost, New Profit: $new_total_profit, New Margin: $new_profit_margin");
-        
-        $result = $wpdb->update(
-            $profit_table,
-            array(
-                'total_sales' => $new_total_sales,
-                'total_cost' => $new_total_cost,
-                'total_profit' => $new_total_profit,
-                'profit_margin' => $new_profit_margin,
-                'sales_count' => $new_sales_count,
-                'items_sold' => $new_items_sold
-            ),
-            array(
-                'date_period' => $date_period,
-                'period_type' => $period_type
-            ),
-            array('%f', '%f', '%f', '%f', '%d', '%d'),
-            array('%s', '%s')
-        );
-        
-        error_log("Update result: " . ($result !== false ? 'Success' : 'Failed - ' . $wpdb->last_error));
-    } else {
-        // Create new record
-        $profit_margin = $sale_amount > 0 ? ($profit_amount / $sale_amount) * 100 : 0;
-        
-        error_log("Creating new record - Sales: $sale_amount, Cost: $cost_amount, Profit: $profit_amount, Margin: $profit_margin");
-        
-        $result = $wpdb->insert(
-            $profit_table,
-            array(
-                'date_period' => $date_period,
-                'period_type' => $period_type,
-                'total_sales' => $sale_amount,
-                'total_cost' => $cost_amount,
-                'total_profit' => $profit_amount,
-                'profit_margin' => $profit_margin,
-                'sales_count' => $sales_count,
-                'items_sold' => $items_sold
-            ),
-            array('%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')
-        );
-        
-        error_log("Insert result: " . ($result !== false ? 'Success' : 'Failed - ' . $wpdb->last_error));
-    }
-}
-
-function handle_get_profit_data() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('view_warehouse')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
-    
-    $period_type = isset($_POST['period_type']) ? sanitize_text_field($_POST['period_type']) : 'daily';
-    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
-    
-    if ($period_type === 'monthly') {
-        $date = date('Y-m-01', strtotime($date)); // First day of month
-    }
-    
-    error_log("Get profit data - Requested date: $date, Period: $period_type");
-    
-    $profit_data = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
-        $date, $period_type
-    ));
-    
-    error_log("Query result: " . print_r($profit_data, true));
-    
-    if (!$profit_data) {
-        // Return zero data if no records found
-        $profit_data = (object) array(
-            'total_sales' => 0,
-            'total_cost' => 0,
-            'total_profit' => 0,
-            'profit_margin' => 0,
-            'sales_count' => 0,
-            'items_sold' => 0
-        );
-        error_log("No profit data found, returning zeros");
-    }
-    
-    wp_send_json_success($profit_data);
-}
-
-function handle_get_inventory_item() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('view_warehouse')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $item_id = intval($_POST['item_id']);
-    
-    $item = $wpdb->get_row($wpdb->prepare(
-        "SELECT i.*, c.name as category_name, l.name as location_name 
-         FROM {$wpdb->prefix}wh_inventory_items i
-         LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
-         LEFT JOIN {$wpdb->prefix}wh_locations l ON i.location_id = l.id
-         WHERE i.id = %d", 
-        $item_id
-    ));
-    
-    if ($item) {
-        wp_send_json_success($item);
-    } else {
-        wp_send_json_error('Item not found');
-    }
-}
-
-function handle_delete_inventory_item() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('delete_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'wh_inventory_items';
-    
-    $item_id = intval($_POST['item_id']);
-    
-    $result = $wpdb->delete(
-        $table_name,
-        array('id' => $item_id),
-        array('%d')
-    );
-    
-    if ($result) {
-        wp_send_json_success('Item deleted successfully');
-    } else {
-        wp_send_json_error('Failed to delete item');
-    }
-}
-
-function handle_sell_inventory_item() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    $sales_table = $wpdb->prefix . 'wh_sales';
-    
-    $item_id = intval($_POST['item_id']);
-    $quantity_sold = intval($_POST['quantity']);
-    
-    // Get current item details
-    $item = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $items_table WHERE id = %d", 
-        $item_id
-    ));
-    
-    if (!$item) {
-        wp_send_json_error('Item not found');
-        return;
-    }
-    
-    if ($item->quantity < $quantity_sold) {
-        wp_send_json_error('Not enough stock available. Current stock: ' . $item->quantity);
-        return;
-    }
-    
-    // Calculate new quantity and status
-    $new_quantity = $item->quantity - $quantity_sold;
-    $new_status = $new_quantity == 0 ? 'out-of-stock' : 
-                 ($new_quantity <= $item->min_stock_level ? 'low-stock' : 'in-stock');
-    
-    // Update inventory
-    $update_result = $wpdb->update(
-        $items_table,
-        array(
-            'quantity' => $new_quantity,
-            'status' => $new_status
-        ),
-        array('id' => $item_id),
-        array('%d', '%s'),
-        array('%d')
-    );
-    
-    if ($update_result === false) {
-        wp_send_json_error('Failed to update inventory');
-        return;
-    }
-    
-    // Record the sale
-    $sale_amount = $item->selling_price ? ($item->selling_price * $quantity_sold) : 0;
-    
-    $sale_result = $wpdb->insert(
-        $sales_table,
-        array(
-            'item_id' => $item_id,
-            'quantity_sold' => $quantity_sold,
-            'unit_price' => $item->selling_price,
-            'total_amount' => $sale_amount,
-            'sale_date' => current_time('mysql'),
-            'sold_by' => get_current_user_id()
-        ),
-        array('%d', '%d', '%f', '%f', '%s', '%d')
-    );
-    
-    if ($sale_result) {
-        wp_send_json_success(array(
-            'message' => 'Sale recorded successfully',
-            'new_quantity' => $new_quantity,
-            'new_status' => $new_status
-        ));
-    } else {
-        wp_send_json_error('Sale processed but failed to record transaction');
-    }
-}
-
-function handle_sell_inventory_item_detailed() {
-    error_log('Sell item detailed handler called');
-    error_log('POST data: ' . print_r($_POST, true));
-    
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_inventory')) {
-        error_log('User lacks edit_inventory capability');
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    $sales_table = $wpdb->prefix . 'wh_sales';
-    
-    // Check if sales table exists and has required columns
-    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$sales_table'");
-    if (!$table_exists) {
-        error_log('Sales table does not exist: ' . $sales_table);
-        wp_send_json_error('Sales table not found. Please contact administrator.');
-        return;
-    }
-    
-    // Get form data
-    $item_id = intval($_POST['item_id']);
-    $quantity_sold = intval($_POST['quantity']);
-    $unit_price = floatval($_POST['unit_price']);
-    $total_amount = floatval($_POST['total_amount']);
-    
-    error_log("Form data - Item ID: $item_id, Quantity: $quantity_sold, Unit Price: $unit_price, Total: $total_amount");
-    
-    // Validate basic data
-    if (!$item_id || $quantity_sold <= 0 || $unit_price <= 0) {
-        error_log('Invalid form data received');
-        wp_send_json_error('Invalid form data. Please check all required fields.');
-        return;
-    }
-    
-    // Buyer information
-    $buyer_name = sanitize_text_field($_POST['buyer_name']);
-    $buyer_phone = sanitize_text_field($_POST['buyer_phone']);
-    $buyer_email = sanitize_email($_POST['buyer_email']);
-    $buyer_address = sanitize_textarea_field($_POST['buyer_address']);
-    
-    // Sale details
-    $payment_method = sanitize_text_field($_POST['payment_method']);
-    $warranty_period = sanitize_text_field($_POST['warranty_period']);
-    $sale_notes = sanitize_textarea_field($_POST['sale_notes']);
-    $sale_date = sanitize_text_field($_POST['sale_date']);
-    
-    // Convert sale_date to MySQL format
-    $sale_date_mysql = date('Y-m-d H:i:s', strtotime($sale_date));
-    
-    // Get current item details
-    $item = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $items_table WHERE id = %d", 
-        $item_id
-    ));
-    
-    if (!$item) {
-        wp_send_json_error('Item not found');
-        return;
-    }
-    
-    if ($item->quantity < $quantity_sold) {
-        wp_send_json_error('Not enough stock available. Current stock: ' . $item->quantity);
-        return;
-    }
-    
-    // Generate unique sale number
-    $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
-    
-    // Check if sale number exists and regenerate if needed
-    while ($wpdb->get_var($wpdb->prepare("SELECT id FROM $sales_table WHERE sale_number = %s", $sale_number))) {
-        $sale_number = 'SALE-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
-    }
-    
-    // Calculate warranty expiry date
-    $warranty_expiry = null;
-    if ($warranty_period) {
-        switch ($warranty_period) {
-            case '30_days':
-                $warranty_expiry = date('Y-m-d H:i:s', strtotime('+30 days', strtotime($sale_date_mysql)));
-                break;
-            case '90_days':
-                $warranty_expiry = date('Y-m-d H:i:s', strtotime('+90 days', strtotime($sale_date_mysql)));
-                break;
-            case '6_months':
-                $warranty_expiry = date('Y-m-d H:i:s', strtotime('+6 months', strtotime($sale_date_mysql)));
-                break;
-            case '1_year':
-                $warranty_expiry = date('Y-m-d H:i:s', strtotime('+1 year', strtotime($sale_date_mysql)));
-                break;
-            case '2_years':
-                $warranty_expiry = date('Y-m-d H:i:s', strtotime('+2 years', strtotime($sale_date_mysql)));
-                break;
-        }
-    }
-    
-    // Start transaction
-    $wpdb->query('START TRANSACTION');
-    
-    try {
-        // Update inventory
-        $new_quantity = $item->quantity - $quantity_sold;
-        $new_status = $new_quantity == 0 ? 'out-of-stock' : 
-                     ($new_quantity <= $item->min_stock_level ? 'low-stock' : 'in-stock');
-        
-        $update_result = $wpdb->update(
-            $items_table,
-            array(
-                'quantity' => $new_quantity,
-                'status' => $new_status
-            ),
-            array('id' => $item_id),
-            array('%d', '%s'),
-            array('%d')
-        );
-        
-        if ($update_result === false) {
-            throw new Exception('Failed to update inventory');
-        }
-        
-        // Record the sale - using only confirmed existing columns
-        $sale_data = array(
-            'sale_number' => $sale_number,
-            'item_id' => $item_id,
-            'quantity_sold' => $quantity_sold,
-            'unit_price' => $unit_price,
-            'total_amount' => $total_amount,
-            'customer_name' => $buyer_name,
-            'customer_phone' => $buyer_phone,
-            'customer_email' => $buyer_email,
-            'customer_address' => $buyer_address,
-            'payment_method' => $payment_method,
-            'payment_status' => 'completed',
-            'sale_date' => $sale_date_mysql,
-            'sold_by' => get_current_user_id(),
-            'notes' => $sale_notes
-        );
-        
-        error_log('Attempting to insert sale data: ' . print_r($sale_data, true));
-        
-        // Add warranty info to metadata
-        $metadata = array(
-            'warranty_period' => $warranty_period,
-            'warranty_expiry' => $warranty_expiry,
-            'item_name' => $item->name,
-            'item_internal_id' => $item->internal_id
-        );
-        $sale_data['metadata'] = json_encode($metadata);
-        
-        $sale_result = $wpdb->insert($sales_table, $sale_data);
-        
-        if ($sale_result === false) {
-            error_log('Database insert failed. Last error: ' . $wpdb->last_error);
-            error_log('Last query: ' . $wpdb->last_query);
-            throw new Exception('Failed to record sale: ' . $wpdb->last_error);
-        }
-        
-        error_log('Sale inserted successfully with ID: ' . $wpdb->insert_id);
-        
-        // Commit transaction
-        $wpdb->query('COMMIT');
-        
-        // Update profit tracking after successful sale - use the actual sale date
-        update_profit_tracking($item_id, $quantity_sold, $unit_price, $sale_date_mysql);
-        
-        wp_send_json_success(array(
-            'message' => 'Sale completed successfully',
-            'sale_number' => $sale_number,
-            'new_quantity' => $new_quantity,
-            'new_status' => $new_status,
-            'warranty_expiry' => $warranty_expiry
-        ));
-        
-    } catch (Exception $e) {
-        // Rollback transaction
-        $wpdb->query('ROLLBACK');
-        error_log('Sale transaction failed: ' . $e->getMessage());
-        error_log('Stack trace: ' . $e->getTraceAsString());
-        wp_send_json_error('Transaction failed: ' . $e->getMessage());
-    }
-}
-
-function handle_update_inventory_item() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_posts')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'wh_inventory_items';
-    
-    $item_id = intval($_POST['item_id']);
-    $name = sanitize_text_field($_POST['name']);
-    $internal_id = sanitize_text_field($_POST['internal_id']);
-    $description = sanitize_textarea_field($_POST['description']);
-    $category_id = intval($_POST['category_id']);
-    $location_id = intval($_POST['location_id']);
-    $quantity = intval($_POST['quantity']);
-    $min_stock_level = intval($_POST['min_stock_level']);
-    $selling_price = floatval($_POST['selling_price']);
-    $total_lot_price = floatval($_POST['total_lot_price']);
-    $supplier = sanitize_text_field($_POST['supplier']);
-    $tested = isset($_POST['tested']) ? 1 : 0;
-    
-    // Check for duplicate Internal ID (excluding current item)
-    $existing_item = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM {$table_name} WHERE internal_id = %s AND id != %d",
-        $internal_id, $item_id
-    ));
-    
-    if ($existing_item) {
-        wp_send_json_error('Item with this Internal ID already exists. Please use a different ID.');
-    }
-    
-    // Determine status based on quantity and min stock level
-    $status = $quantity == 0 ? 'out-of-stock' : 
-             ($min_stock_level > 0 && $quantity <= $min_stock_level ? 'low-stock' : 'in-stock');
-    
-    // Update data array - NOTE: purchase_price is intentionally excluded to prevent editing
-    $update_data = array(
-        'name' => $name,
-        'internal_id' => $internal_id,
-        'description' => $description,
-        'category_id' => $category_id,
-        'location_id' => $location_id,
-        'quantity' => $quantity,
-        'min_stock_level' => $min_stock_level,
-        'selling_price' => $selling_price,
-        'total_lot_price' => $total_lot_price,
-        'supplier' => $supplier,
-        'tested' => $tested,
-        'status' => $status
-    );
-    
-    $format_array = array('%s', '%s', '%s', '%d', '%d', '%d', '%d', '%f', '%f', '%s', '%d', '%s');
-    
-    $result = $wpdb->update(
-        $table_name,
-        $update_data,
-        array('id' => $item_id),
-        $format_array,
-        array('%d')
-    );
-    
-    if ($result !== false) {
-        wp_send_json_success('Item updated successfully');
-    } else {
-        wp_send_json_error('Failed to update item: ' . $wpdb->last_error);
-    }
-}
+// AJAX handlers are now handled by the plugin
 
 // Get dashboard stats
 function get_dashboard_stats() {
@@ -1255,221 +90,219 @@ function get_dashboard_stats() {
     );
 }
 
-// Get all categories
+// Get all categories with hierarchical structure
 function get_all_categories() {
     global $wpdb;
+    $categories = $wpdb->get_results("
+        SELECT c.*, 
+               (SELECT COUNT(*) FROM {$wpdb->prefix}wh_inventory_items WHERE category_id = c.id) as item_count,
+               parent.name as parent_name
+        FROM {$wpdb->prefix}wh_categories c
+        LEFT JOIN {$wpdb->prefix}wh_categories parent ON c.parent_id = parent.id
+        WHERE c.is_active = 1
+        ORDER BY c.parent_id IS NULL DESC, c.parent_id, c.sort_order, c.name
+    ");
+    return $categories ?: array();
+}
+
+// Get categories as hierarchical tree
+function get_categories_tree($parent_id = null) {
+    global $wpdb;
+    
+    $where = $parent_id ? "parent_id = $parent_id" : "parent_id IS NULL";
     
     $categories = $wpdb->get_results("
         SELECT c.*, 
-               COUNT(i.id) as item_count
+               (SELECT COUNT(*) FROM {$wpdb->prefix}wh_inventory_items WHERE category_id = c.id) as item_count
         FROM {$wpdb->prefix}wh_categories c
-        LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON c.id = i.category_id
-        GROUP BY c.id
-        ORDER BY c.name
+        WHERE c.is_active = 1 AND $where
+        ORDER BY c.sort_order, c.name
     ");
     
-    return $categories;
-}
-
-// Generate next available Item ID with Item- prefix
-function generate_next_item_id() {
-    global $wpdb;
-    
-    // Get all existing internal IDs that start with "Item-"
-    $existing_ids = $wpdb->get_col("
-        SELECT internal_id 
-        FROM {$wpdb->prefix}wh_inventory_items 
-        WHERE internal_id LIKE 'Item-%'
-        ORDER BY internal_id
-    ");
-    
-    // Extract just the numbers from existing IDs
-    $existing_numbers = array();
-    foreach ($existing_ids as $id) {
-        if (preg_match('/^Item-(\d+)$/', $id, $matches)) {
-            $existing_numbers[] = intval($matches[1]);
-        }
+    foreach ($categories as &$category) {
+        $category->children = get_categories_tree($category->id);
     }
     
-    // Sort numbers to ensure we get the correct sequence
-    sort($existing_numbers);
+    return $categories ?: array();
+}
+
+// Get category breadcrumb path
+function get_category_path($category_id) {
+    global $wpdb;
     
-    // Find the next available number
-    $next_number = 1;
-    foreach ($existing_numbers as $number) {
-        if ($next_number == $number) {
-            $next_number++;
+    $path = array();
+    $current_id = $category_id;
+    
+    while ($current_id) {
+        $category = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, name, parent_id FROM {$wpdb->prefix}wh_categories WHERE id = %d",
+            $current_id
+        ));
+        
+        if ($category) {
+            array_unshift($path, $category);
+            $current_id = $category->parent_id;
         } else {
             break;
         }
     }
     
-    return 'Item-' . $next_number;
+    return $path;
 }
 
-// AJAX handler to get next available Item ID
-function handle_get_next_item_id() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    $next_id = generate_next_item_id();
-    wp_send_json_success($next_id);
-}
-
-// Update all existing items to use Item- prefix format
-function update_all_items_to_new_format() {
-    global $wpdb;
-    
-    // Get all items that don't already have the Item- prefix
-    $items = $wpdb->get_results("
-        SELECT id, internal_id 
-        FROM {$wpdb->prefix}wh_inventory_items 
-        WHERE internal_id NOT LIKE 'Item-%'
-        ORDER BY id
-    ");
-    
-    if (empty($items)) {
-        return array('success' => true, 'message' => 'All items already have the correct format.');
-    }
-    
-    $updated_count = 0;
-    $id_map = array(); // Track old ID to new ID mapping
-    
-    // Get all existing Item- IDs to avoid conflicts
-    $existing_item_ids = $wpdb->get_col("
-        SELECT internal_id 
-        FROM {$wpdb->prefix}wh_inventory_items 
-        WHERE internal_id LIKE 'Item-%'
-    ");
-    
-    $existing_numbers = array();
-    foreach ($existing_item_ids as $id) {
-        if (preg_match('/^Item-(\d+)$/', $id, $matches)) {
-            $existing_numbers[] = intval($matches[1]);
-        }
-    }
-    sort($existing_numbers);
-    
-    // Start numbering from 1
-    $next_number = 1;
-    
-    foreach ($items as $item) {
-        // Find next available number
-        while (in_array($next_number, $existing_numbers)) {
-            $next_number++;
-        }
-        
-        $new_id = 'Item-' . $next_number;
-        
-        // Update the item
-        $result = $wpdb->update(
-            $wpdb->prefix . 'wh_inventory_items',
-            array('internal_id' => $new_id),
-            array('id' => $item->id),
-            array('%s'),
-            array('%d')
-        );
-        
-        if ($result !== false) {
-            $id_map[$item->internal_id] = $new_id;
-            $existing_numbers[] = $next_number; // Add to existing numbers to avoid conflicts
-            $updated_count++;
-        }
-        
-        $next_number++;
-    }
-    
-    return array(
-        'success' => true, 
-        'updated_count' => $updated_count,
-        'total_items' => count($items),
-        'id_map' => $id_map,
-        'message' => "Successfully updated {$updated_count} items to new Item- format."
-    );
-}
-
-// AJAX handler to update all items to new format
-function handle_update_all_items_format() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Unauthorized');
-    }
-    
-    $result = update_all_items_to_new_format();
-    
-    if ($result['success']) {
-        wp_send_json_success($result);
-    } else {
-        wp_send_json_error($result['message']);
-    }
-}
-
-// Get all locations with hierarchy
+// Get all locations
 function get_all_locations() {
     global $wpdb;
-    $table = $wpdb->prefix . 'wh_locations';
-    
-    $locations = $wpdb->get_results("SELECT * FROM $table ORDER BY level ASC, name ASC");
-    
-    // Add full path and ensure code property exists
-    foreach ($locations as $location) {
-        $location->full_path = get_location_path($location->id);
-        if (!isset($location->code)) {
-            $location->code = '';
-        }
-    }
-    
-    return $locations;
+    return $wpdb->get_results("SELECT * FROM {$wpdb->prefix}wh_locations ORDER BY level, name");
 }
 
-// Get location hierarchy path
-function get_location_path($location_id, $include_self = true) {
+// Get locations as hierarchical tree
+function get_locations_tree($parent_id = null) {
     global $wpdb;
     
-    if (!$location_id) {
-        return '';
+    $where = $parent_id ? "parent_id = $parent_id" : "(parent_id IS NULL OR parent_id = 0)";
+    
+    $locations = $wpdb->get_results("
+        SELECT l.*,
+               (SELECT COUNT(*) FROM {$wpdb->prefix}wh_inventory_items WHERE location_id = l.id) as item_count
+        FROM {$wpdb->prefix}wh_locations l
+        WHERE $where
+        ORDER BY l.level, l.name
+    ");
+    
+    foreach ($locations as &$location) {
+        $location->children = get_locations_tree($location->id);
     }
+    
+    return $locations ?: array();
+}
+
+// Get location breadcrumb path
+function get_location_path($location_id) {
+    global $wpdb;
     
     $path = array();
     $current_id = $location_id;
     
-    // Build path by traversing up the hierarchy
     while ($current_id) {
         $location = $wpdb->get_row($wpdb->prepare(
             "SELECT id, name, parent_id FROM {$wpdb->prefix}wh_locations WHERE id = %d",
             $current_id
         ));
         
-        if (!$location) {
+        if ($location) {
+            array_unshift($path, $location);
+            $current_id = $location->parent_id;
+        } else {
             break;
         }
-        
-        // Add to beginning of path array
-        array_unshift($path, $location->name);
-        
-        // Move to parent
-        $current_id = $location->parent_id;
     }
     
-    if (!$include_self && count($path) > 0) {
-        array_pop($path); // Remove the location itself, keep only parents
-    }
-    
-    return implode(' → ', $path);
+    return $path;
 }
 
-// Get locations organized by hierarchy level for dropdowns
-function get_locations_for_dropdown($parent_id = null, $level = 1) {
+// Get all tasks
+function get_all_tasks() {
+    global $wpdb;
+    $tasks = $wpdb->get_results("
+        SELECT t.*, u.display_name as assigned_to_name 
+        FROM {$wpdb->prefix}wh_tasks t
+        LEFT JOIN {$wpdb->prefix}users u ON t.assigned_to = u.ID
+        ORDER BY t.created_at DESC
+    ");
+    return $tasks ?: array();
+}
+
+// Get task history
+function get_task_history() {
     global $wpdb;
     
-    $where_clause = $parent_id ? "parent_id = $parent_id" : "parent_id IS NULL";
+    $table_name = $wpdb->prefix . 'wh_task_history';
+    $six_months_ago = date('Y-m-d H:i:s', strtotime('-6 months'));
     
-    return $wpdb->get_results("
-        SELECT id, name, code, level, parent_id 
-        FROM {$wpdb->prefix}wh_locations 
-        WHERE $where_clause 
-        ORDER BY name
+    // Check if table exists
+    if (!$wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name))) {
+        return array();
+    }
+    
+    // Try old schema first (most likely to work) - only get last 6 months
+    $history = $wpdb->get_results($wpdb->prepare("
+        SELECT h.*, 
+               h.title as task_title, 
+               COALESCE(u.display_name, 'System') as user_name,
+               COALESCE(u.display_name, 'System') as assigned_to_name,
+               'completed' as action,
+               h.completed_at as created_at
+        FROM {$wpdb->prefix}wh_task_history h
+        LEFT JOIN {$wpdb->prefix}users u ON h.completed_by = u.ID
+        WHERE h.completed_at >= %s OR (h.completed_at IS NULL AND h.created_at >= %s)
+        ORDER BY h.completed_at DESC
+        LIMIT 50
+    ", $six_months_ago, $six_months_ago));
+    
+    // If old schema query worked, return results
+    if (!$wpdb->last_error && $history !== false) {
+        return $history ?: array();
+    }
+    
+    // Clear the error and try new schema - only get last 6 months
+    $wpdb->last_error = '';
+    
+    $history = $wpdb->get_results($wpdb->prepare("
+        SELECT h.*, 
+               t.title as task_title, 
+               COALESCE(u.display_name, 'System') as user_name,
+               COALESCE(u.display_name, 'System') as assigned_to_name,
+               COALESCE(h.action, 'completed') as action,
+               h.created_at
+        FROM {$wpdb->prefix}wh_task_history h
+        LEFT JOIN {$wpdb->prefix}wh_tasks t ON h.task_id = t.id
+        LEFT JOIN {$wpdb->prefix}users u ON h.user_id = u.ID
+        WHERE h.created_at >= %s
+        ORDER BY h.created_at DESC
+        LIMIT 50
+    ", $six_months_ago));
+    
+    // If new schema worked, return results
+    if (!$wpdb->last_error && $history !== false) {
+        return $history ?: array();
+    }
+    
+    // Clear error and try minimal fallback - only get last 6 months
+    $wpdb->last_error = '';
+    
+    $history = $wpdb->get_results($wpdb->prepare("
+        SELECT h.*, 
+               COALESCE(h.title, 'Unknown Task') as task_title,
+               'System' as user_name,
+               'System' as assigned_to_name,
+               'completed' as action,
+               COALESCE(h.completed_at, h.created_at) as created_at
+        FROM {$wpdb->prefix}wh_task_history h
+        WHERE (h.completed_at >= %s OR (h.completed_at IS NULL AND h.created_at >= %s))
+        ORDER BY COALESCE(h.completed_at, h.created_at) DESC
+        LIMIT 50
+    ", $six_months_ago, $six_months_ago));
+    
+    return $history ?: array();
+}
+
+// Get team members
+function get_team_members() {
+    global $wpdb;
+    $members = $wpdb->get_results("
+        SELECT u.ID, u.display_name, u.user_email, u.user_registered,
+               um.meta_value as role_name,
+               um2.meta_value as department,
+               um3.meta_value as phone
+        FROM {$wpdb->prefix}users u
+        LEFT JOIN {$wpdb->prefix}usermeta um ON u.ID = um.user_id AND um.meta_key = 'wp_capabilities'
+        LEFT JOIN {$wpdb->prefix}usermeta um2 ON u.ID = um2.user_id AND um2.meta_key = 'department'
+        LEFT JOIN {$wpdb->prefix}usermeta um3 ON u.ID = um3.user_id AND um3.meta_key = 'phone'
+        WHERE um.meta_value LIKE '%warehouse%'
+        ORDER BY u.display_name
     ");
+    return $members ?: array();
 }
 
 // Custom user roles for warehouse management
@@ -1592,660 +425,722 @@ function restrict_warehouse_access() {
 }
 add_action('template_redirect', 'restrict_warehouse_access');
 
-// Function to rebuild profit data from existing sales (for fixing timezone issues)
-function rebuild_profit_data() {
-    global $wpdb;
+// Team management handlers are in the plugin
+
+// AJAX Handlers for Tasks Management
+add_action('wp_ajax_add_task', 'handle_add_task');
+function handle_add_task() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
     
-    // Clear existing profit data
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
-    $wpdb->query("DELETE FROM $profit_table");
-    
-    // Get all sales with item purchase prices
-    $sales = $wpdb->get_results("
-        SELECT s.*, i.purchase_price 
-        FROM {$wpdb->prefix}wh_sales s
-        LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
-        WHERE i.purchase_price IS NOT NULL AND i.purchase_price > 0
-        ORDER BY s.sale_date ASC
-    ");
-    
-    foreach ($sales as $sale) {
-        // Recalculate profit for each sale using the correct sale date
-        update_profit_tracking($sale->item_id, $sale->quantity_sold, $sale->unit_price, $sale->sale_date);
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
     }
     
-    error_log("Rebuilt profit data for " . count($sales) . " sales");
+    global $wpdb;
+    
+    $result = $wpdb->insert(
+        $wpdb->prefix . 'wh_tasks',
+        array(
+            'title' => sanitize_text_field($_POST['title']),
+            'description' => sanitize_textarea_field($_POST['description']),
+            'priority' => sanitize_text_field($_POST['priority']),
+            'assigned_to' => intval($_POST['assigned_to']),
+            'due_date' => sanitize_text_field($_POST['due_date']),
+            'status' => 'pending',
+            'created_by' => get_current_user_id(),
+            'created_at' => current_time('mysql')
+        )
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to create task');
+    }
+    
+    wp_send_json_success('Task created successfully');
 }
 
-// Add AJAX handler for rebuilding profit data
-add_action('wp_ajax_rebuild_profit_data', 'handle_rebuild_profit_data');
+add_action('wp_ajax_delete_task', 'handle_delete_task');
+function handle_delete_task() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    $task_id = intval($_POST['task_id']);
+    
+    $result = $wpdb->delete(
+        $wpdb->prefix . 'wh_tasks',
+        array('id' => $task_id),
+        array('%d')
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to delete task');
+    }
+    
+    wp_send_json_success('Task deleted successfully');
+}
 
-function handle_rebuild_profit_data() {
+add_action('wp_ajax_update_task_status', 'handle_update_task_status');
+function handle_update_task_status() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    $task_id = intval($_POST['task_id']);
+    $status = sanitize_text_field($_POST['status']);
+    
+    // Validate status
+    $valid_statuses = array('pending', 'in_progress', 'completed', 'archived');
+    if (!in_array($status, $valid_statuses)) {
+        wp_send_json_error('Invalid status');
+    }
+    
+    $result = $wpdb->update(
+        $wpdb->prefix . 'wh_tasks',
+        array(
+            'status' => $status,
+            'updated_at' => current_time('mysql')
+        ),
+        array('id' => $task_id),
+        array('%s', '%s'),
+        array('%d')
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to update task status');
+    }
+    
+    // Skip adding to task history for status changes
+    // Only add to history when task is completed and moved to archive
+    
+    wp_send_json_success('Task status updated successfully');
+}
+
+add_action('wp_ajax_move_task_to_history', 'handle_move_task_to_history');
+function handle_move_task_to_history() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    $task_id = intval($_POST['task_id']);
+    
+    // Archive the task
+    $result = $wpdb->update(
+        $wpdb->prefix . 'wh_tasks',
+        array(
+            'status' => 'archived',
+            'completed_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql')
+        ),
+        array('id' => $task_id),
+        array('%s', '%s', '%s'),
+        array('%d')
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to archive task');
+    }
+    
+    // Get task details for history
+    $task = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wh_tasks WHERE id = %d", $task_id));
+    
+    if ($task) {
+        // Add to task history using current schema
+        $history_data = array(
+            'original_task_id' => $task_id,
+            'title' => $task->title,
+            'description' => $task->description,
+            'priority' => $task->priority,
+            'assigned_to' => $task->assigned_to,
+            'created_by' => $task->created_by,
+            'completed_by' => get_current_user_id(),
+            'due_date' => $task->due_date,
+            'created_at' => $task->created_at,
+            'completed_at' => current_time('mysql'),
+            'completion_notes' => 'Task archived from completed status'
+        );
+        
+        $wpdb->insert(
+            $wpdb->prefix . 'wh_task_history',
+            $history_data
+        );
+    }
+    
+    wp_send_json_success('Task archived successfully');
+}
+
+add_action('wp_ajax_get_task_history', 'handle_get_task_history');
+function handle_get_task_history() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    // Periodically clean up old data (10% chance on each call)
+    if (rand(1, 10) === 1) {
+        cleanup_old_task_history();
+    }
+    
+    try {
+        $history = get_task_history();
+        
+        // Transform the data to match what JavaScript expects
+        $formatted_history = array();
+        if ($history) {
+            foreach ($history as $item) {
+                $formatted_history[] = array(
+                    'id' => $item->id ?? '',
+                    'title' => $item->task_title ?? $item->title ?? 'Unknown Task',
+                    'description' => $item->description ?? '',
+                    'priority' => $item->priority ?? 'medium',
+                    'assigned_to_name' => $item->user_name ?? 'System',
+                    'completed_at' => $item->created_at ?? $item->completed_at ?? '',
+                    'created_at' => $item->created_at ?? $item->completed_at ?? ''
+                );
+            }
+        }
+        
+        wp_send_json_success($formatted_history);
+        
+    } catch (Exception $e) {
+        error_log('Task history error: ' . $e->getMessage());
+        wp_send_json_error('Failed to load task history: ' . $e->getMessage());
+    }
+}
+
+// Team Chat Functions
+add_action('wp_ajax_get_chat_messages', 'handle_get_chat_messages');
+function handle_get_chat_messages() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    // Create table if it doesn't exist
+    create_chat_table();
+    
+    // Periodically clean up old data (10% chance on each call)
+    if (rand(1, 10) === 1) {
+        cleanup_old_chat_messages();
+    }
+    
+    // Only get messages from the last 6 months
+    $six_months_ago = date('Y-m-d H:i:s', strtotime('-6 months'));
+    
+    $messages = $wpdb->get_results($wpdb->prepare("
+        SELECT cm.*, u.display_name as user_name 
+        FROM {$wpdb->prefix}wh_chat_messages cm
+        LEFT JOIN {$wpdb->prefix}users u ON cm.user_id = u.ID
+        WHERE cm.created_at >= %s
+        ORDER BY cm.created_at ASC
+        LIMIT 50
+    ", $six_months_ago));
+    
+    if ($wpdb->last_error) {
+        wp_send_json_error('Database error: ' . $wpdb->last_error);
+    }
+    
+    wp_send_json_success($messages ?: array());
+}
+
+add_action('wp_ajax_send_chat_message', 'handle_send_chat_message');
+function handle_send_chat_message() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    $message = sanitize_textarea_field($_POST['message']);
+    if (empty($message)) {
+        wp_send_json_error('Message cannot be empty');
+    }
+    
+    global $wpdb;
+    
+    // Create table if it doesn't exist
+    create_chat_table();
+    
+    $result = $wpdb->insert(
+        $wpdb->prefix . 'wh_chat_messages',
+        array(
+            'user_id' => get_current_user_id(),
+            'message' => $message,
+            'created_at' => current_time('mysql')
+        ),
+        array('%d', '%s', '%s')
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to save message: ' . $wpdb->last_error);
+    }
+    
+    wp_send_json_success('Message sent successfully');
+}
+
+function create_chat_table() {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . 'wh_chat_messages';
+    
+    $charset_collate = $wpdb->get_charset_collate();
+    
+    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        id int(11) NOT NULL AUTO_INCREMENT,
+        user_id int(11) NOT NULL,
+        message text NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY created_at (created_at)
+    ) $charset_collate;";
+    
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+}
+
+// Data Retention Functions - Keep data for 6 months only
+function cleanup_old_data() {
+    cleanup_old_task_history();
+    cleanup_old_chat_messages();
+}
+
+function cleanup_old_task_history() {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . 'wh_task_history';
+    
+    // Delete records older than 6 months
+    $six_months_ago = date('Y-m-d H:i:s', strtotime('-6 months'));
+    
+    $deleted = $wpdb->query($wpdb->prepare(
+        "DELETE FROM $table_name WHERE completed_at < %s OR (completed_at IS NULL AND created_at < %s)",
+        $six_months_ago,
+        $six_months_ago
+    ));
+    
+    if ($deleted !== false) {
+        error_log("Cleaned up $deleted old task history records older than 6 months");
+    }
+    
+    return $deleted;
+}
+
+function cleanup_old_chat_messages() {
+    global $wpdb;
+    
+    $table_name = $wpdb->prefix . 'wh_chat_messages';
+    
+    // Check if table exists
+    if (!$wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name))) {
+        return 0;
+    }
+    
+    // Delete messages older than 6 months
+    $six_months_ago = date('Y-m-d H:i:s', strtotime('-6 months'));
+    
+    $deleted = $wpdb->query($wpdb->prepare(
+        "DELETE FROM $table_name WHERE created_at < %s",
+        $six_months_ago
+    ));
+    
+    if ($deleted !== false) {
+        error_log("Cleaned up $deleted old chat messages older than 6 months");
+    }
+    
+    return $deleted;
+}
+
+// Schedule cleanup to run daily
+add_action('wp', 'schedule_data_cleanup');
+function schedule_data_cleanup() {
+    if (!wp_next_scheduled('warehouse_daily_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'warehouse_daily_cleanup');
+    }
+}
+
+add_action('warehouse_daily_cleanup', 'cleanup_old_data');
+
+// Clean up on theme switch to ensure we don't leave scheduled events
+add_action('switch_theme', 'unschedule_data_cleanup');
+function unschedule_data_cleanup() {
+    wp_clear_scheduled_hook('warehouse_daily_cleanup');
+}
+
+// Manual cleanup AJAX handler for admin
+add_action('wp_ajax_manual_cleanup_data', 'handle_manual_cleanup_data');
+function handle_manual_cleanup_data() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
     if (!current_user_can('manage_options')) {
-        wp_die('Unauthorized');
+        wp_send_json_error('Insufficient permissions');
     }
     
-    rebuild_profit_data();
-    wp_send_json_success('Profit data rebuilt successfully');
+    $task_history_deleted = cleanup_old_task_history();
+    $chat_messages_deleted = cleanup_old_chat_messages();
+    
+    $message = sprintf(
+        'Cleanup completed. Deleted %d old task history records and %d old chat messages (older than 6 months).',
+        $task_history_deleted,
+        $chat_messages_deleted
+    );
+    
+    wp_send_json_success($message);
 }
 
-// Category management handlers
+// AJAX Handlers for Categories Management
+add_action('wp_ajax_add_category', 'handle_add_category');
 function handle_add_category() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
     }
     
     global $wpdb;
-    $categories_table = $wpdb->prefix . 'wh_categories';
     
     $name = sanitize_text_field($_POST['name']);
-    $description = sanitize_textarea_field($_POST['description']);
-    $color = sanitize_text_field($_POST['color']);
-    
-    if (empty($name)) {
-        wp_send_json_error('Category name is required');
-        return;
-    }
-    
-    // Check if category already exists
-    $existing = $wpdb->get_var($wpdb->prepare(
-        "SELECT id FROM $categories_table WHERE name = %s",
-        $name
-    ));
-    
-    if ($existing) {
-        wp_send_json_error('Category with this name already exists');
-        return;
-    }
+    $slug = sanitize_title($name);
+    $description = sanitize_textarea_field($_POST['description'] ?? '');
+    $color = sanitize_hex_color($_POST['color'] ?? '#3b82f6');
+    $parent_id = intval($_POST['parent_id'] ?? 0);
+    $icon = sanitize_text_field($_POST['icon'] ?? 'tag');
     
     $result = $wpdb->insert(
-        $categories_table,
+        $wpdb->prefix . 'wh_categories',
         array(
             'name' => $name,
+            'slug' => $slug,
             'description' => $description,
             'color' => $color,
-            'created_at' => current_time('mysql')
+            'parent_id' => $parent_id > 0 ? $parent_id : null,
+            'icon' => $icon,
+            'is_active' => 1,
+            'sort_order' => 0
         ),
-        array('%s', '%s', '%s', '%s')
+        array('%s', '%s', '%s', '%s', '%d', '%s', '%d', '%d')
     );
     
-    if ($result) {
-        wp_send_json_success('Category added successfully');
-    } else {
-        wp_send_json_error('Failed to add category');
+    if ($result === false) {
+        wp_send_json_error('Database error: ' . $wpdb->last_error);
     }
+    
+    wp_send_json_success('Category created successfully');
 }
 
+add_action('wp_ajax_update_category', 'handle_update_category');
+function handle_update_category() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    $category_id = intval($_POST['category_id']);
+    $name = sanitize_text_field($_POST['name']);
+    $slug = sanitize_title($name);
+    $description = sanitize_textarea_field($_POST['description']);
+    $color = sanitize_hex_color($_POST['color']);
+    $parent_id = intval($_POST['parent_id']);
+    $icon = sanitize_text_field($_POST['icon'] ?? 'tag');
+    
+    // Prevent self-reference and circular references
+    if ($parent_id == $category_id) {
+        wp_send_json_error('Category cannot be its own parent');
+    }
+    
+    // Check for circular reference
+    if ($parent_id > 0) {
+        $path = get_category_path($parent_id);
+        foreach ($path as $ancestor) {
+            if ($ancestor->id == $category_id) {
+                wp_send_json_error('Cannot create circular reference');
+            }
+        }
+    }
+    
+    $result = $wpdb->update(
+        $wpdb->prefix . 'wh_categories',
+        array(
+            'name' => $name,
+            'slug' => $slug,
+            'description' => $description,
+            'color' => $color,
+            'parent_id' => $parent_id > 0 ? $parent_id : null,
+            'icon' => $icon
+        ),
+        array('id' => $category_id),
+        array('%s', '%s', '%s', '%s', '%d', '%s'),
+        array('%d')
+    );
+    
+    if ($result === false) {
+        wp_send_json_error('Failed to update category');
+    }
+    
+    wp_send_json_success('Category updated successfully');
+}
+
+add_action('wp_ajax_delete_category', 'handle_delete_category');
 function handle_delete_category() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    if (!current_user_can('delete_inventory')) {
-        wp_die('Unauthorized');
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
     }
     
     global $wpdb;
-    $categories_table = $wpdb->prefix . 'wh_categories';
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
     
     $category_id = intval($_POST['category_id']);
     
     // Check if category has items
     $item_count = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM $items_table WHERE category_id = %d",
+        "SELECT COUNT(*) FROM {$wpdb->prefix}wh_inventory_items WHERE category_id = %d",
         $category_id
     ));
     
     if ($item_count > 0) {
-        wp_send_json_error("Cannot delete category. It contains $item_count items.");
-        return;
+        wp_send_json_error('Cannot delete category with items. Please move items to another category first.');
     }
     
-    $result = $wpdb->delete(
-        $categories_table,
+    // Check if category has subcategories
+    $subcategory_count = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}wh_categories WHERE parent_id = %d AND is_active = 1",
+        $category_id
+    ));
+    
+    if ($subcategory_count > 0) {
+        wp_send_json_error('Cannot delete category with subcategories. Please move or delete subcategories first.');
+    }
+    
+    // Soft delete by updating is_active status
+    $result = $wpdb->update(
+        $wpdb->prefix . 'wh_categories',
+        array('is_active' => 0),
         array('id' => $category_id),
+        array('%d'),
         array('%d')
     );
     
-    if ($result) {
-        wp_send_json_success('Category deleted successfully');
-    } else {
+    if ($result === false) {
         wp_send_json_error('Failed to delete category');
     }
+    
+    wp_send_json_success('Category deleted successfully');
 }
 
-// Location management handlers
-function handle_add_location() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    $name = sanitize_text_field($_POST['name']);
-    $code = sanitize_text_field($_POST['code']);
-    $type = sanitize_text_field($_POST['type']);
-    $description = sanitize_textarea_field($_POST['description']);
-    $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : null;
-    
-    global $wpdb;
-    $table = $wpdb->prefix . 'wh_locations';
-    
-    // Calculate level based on parent
-    $level = 1;
-    if ($parent_id) {
-        $parent = $wpdb->get_row($wpdb->prepare("SELECT level FROM $table WHERE id = %d", $parent_id));
-        if ($parent) {
-            $level = $parent->level + 1;
-        }
-    }
-    
-    // Generate unique code if not provided
-    if (empty($code)) {
-        $code = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name), 0, 3)) . '-' . uniqid();
-    }
-    
-    // Insert location
-    $result = $wpdb->insert(
-        $table,
-        array(
-            'name' => $name,
-            'code' => $code,
-            'type' => $type,
-            'description' => $description,
-            'parent_id' => $parent_id,
-            'level' => $level
-        )
-    );
-    
-    if ($result) {
-        $location_id = $wpdb->insert_id;
-        
-        // Generate QR code
-        $qr_data = json_encode([
-            'type' => 'location',
-            'id' => $location_id,
-            'name' => $name,
-            'code' => $code,
-            'location_type' => $type
-        ]);
-        
-        $qr_url = generate_qr_code_url($qr_data);
-        
-        // Update location with QR code URL
-        $wpdb->update(
-            $table,
-            array('qr_code_image' => $qr_url),
-            array('id' => $location_id)
-        );
-        
-        wp_send_json_success([
-            'id' => $location_id,
-            'qr_url' => $qr_url,
-            'message' => 'Location added successfully'
-        ]);
-    } else {
-        wp_send_json_error('Failed to add location');
-    }
-}
-
-function handle_fix_purchase_prices() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    global $wpdb;
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    
-    // Get all items with null or zero purchase prices
-    $items = $wpdb->get_results("
-        SELECT id, quantity, selling_price
-        FROM $items_table
-        WHERE purchase_price IS NULL OR purchase_price = 0
-    ");
-    
-    $updated_count = 0;
-    foreach ($items as $item) {
-        if ($item->selling_price > 0) {
-            // Set purchase price to 70% of selling price as a reasonable default
-            $purchase_price = $item->selling_price * 0.7;
-            $result = $wpdb->update(
-                $items_table,
-                array(
-                    'purchase_price' => $purchase_price
-                ),
-                array('id' => $item->id),
-                array('%f'),
-                array('%d')
-            );
-            
-            if ($result !== false) {
-                $updated_count++;
-            }
-        }
-    }
-    
-    wp_send_json_success("Updated purchase prices for $updated_count items");
-}
-
-function handle_debug_profit_data() {
+add_action('wp_ajax_get_category_data', 'handle_get_category_data');
+function handle_get_category_data() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
     if (!current_user_can('manage_options')) {
-        wp_die('Unauthorized');
+        wp_send_json_error('Insufficient permissions');
     }
     
     global $wpdb;
-    $profit_table = $wpdb->prefix . 'wh_profit_tracking';
     
-    $period_type = isset($_POST['period_type']) ? sanitize_text_field($_POST['period_type']) : 'daily';
-    $date = isset($_POST['date']) ? sanitize_text_field($_POST['date']) : current_time('Y-m-d');
+    $category_id = intval($_POST['category_id']);
+    $category = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wh_categories WHERE id = %d", $category_id));
     
-    if ($period_type === 'monthly') {
-        $date = date('Y-m-01', strtotime($date)); // First day of month
+    if (!$category) {
+        wp_send_json_error('Category not found');
     }
     
-    $profit_data = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $profit_table WHERE date_period = %s AND period_type = %s",
-        $date, $period_type
-    ));
-    
-    if (!$profit_data) {
-        // Return zero data if no records found
-        $profit_data = (object) array(
-            'total_sales' => 0,
-            'total_cost' => 0,
-            'total_profit' => 0,
-            'profit_margin' => 0,
-            'sales_count' => 0,
-            'items_sold' => 0
-        );
-    }
-    
-    wp_send_json_success($profit_data);
+    wp_send_json_success($category);
 }
 
-// QR Code generation handlers
-function handle_generate_qr_code() {
+// AJAX Handlers for Locations Management
+add_action('wp_ajax_add_location', 'handle_add_location');
+function handle_add_location() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    $type = sanitize_text_field($_POST['type']);
-    $id = intval($_POST['id']);
-    
-    if (!in_array($type, ['item', 'location'])) {
-        wp_send_json_error('Invalid type');
-        return;
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
     }
     
     global $wpdb;
     
-    if ($type === 'item') {
-        $table = $wpdb->prefix . 'wh_inventory_items';
-        $item = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
-        
-        if (!$item) {
-            wp_send_json_error('Item not found');
-            return;
+    $name = sanitize_text_field($_POST['name']);
+    $code = sanitize_text_field($_POST['code']);
+    $parent_id = intval($_POST['parent_id']);
+    
+    // Calculate level and path
+    $level = 1;
+    $full_path = $name;
+    
+    if ($parent_id > 0) {
+        $parent = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wh_locations WHERE id = %d", $parent_id));
+        if ($parent) {
+            $level = $parent->level + 1;
+            $full_path = $parent->full_path . ' > ' . $name;
         }
-        
-        $qr_data = json_encode([
-            'type' => 'item',
-            'id' => $item->id,
-            'internal_id' => $item->internal_id,
-            'name' => $item->name,
-            'quantity' => $item->quantity,
-            'tested' => $item->tested ?? 0
-        ]);
-        
-    } else {
-        $table = $wpdb->prefix . 'wh_locations';
-        $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
-        
-        if (!$location) {
-            wp_send_json_error('Location not found');
-            return;
-        }
-        
-        $qr_data = json_encode([
-            'type' => 'location',
-            'id' => $location->id,
-            'name' => $location->name,
-            'location_type' => $location->type
-        ]);
     }
     
-    // Generate QR code using Google Charts API (simple solution)
-    $qr_url = generate_qr_code_url($qr_data);
+    $result = $wpdb->insert(
+        $wpdb->prefix . 'wh_locations',
+        array(
+            'name' => $name,
+            'code' => $code,
+            'description' => sanitize_textarea_field($_POST['description']),
+            'type' => sanitize_text_field($_POST['type']),
+            'parent_id' => $parent_id ?: null,
+            'level' => $level,
+            'full_path' => $full_path,
+            'created_at' => current_time('mysql')
+        )
+    );
     
-    // Update database with QR code URL
+    if ($result === false) {
+        wp_send_json_error('Failed to create location');
+    }
+    
+    wp_send_json_success('Location created successfully');
+}
+
+add_action('wp_ajax_update_location', 'handle_update_location');
+function handle_update_location() {
+    check_ajax_referer('warehouse_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
+    }
+    
+    global $wpdb;
+    
+    $location_id = intval($_POST['location_id']);
+    $name = sanitize_text_field($_POST['name']);
+    $code = sanitize_text_field($_POST['code']);
+    $parent_id = intval($_POST['parent_id']);
+    
+    // Calculate level and path
+    $level = 1;
+    $full_path = $name;
+    
+    if ($parent_id > 0) {
+        $parent = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wh_locations WHERE id = %d", $parent_id));
+        if ($parent) {
+            $level = $parent->level + 1;
+            $full_path = $parent->full_path . ' > ' . $name;
+        }
+    }
+    
     $result = $wpdb->update(
-        $table,
-        array('qr_code_image' => $qr_url),
-        array('id' => $id),
-        array('%s'),
+        $wpdb->prefix . 'wh_locations',
+        array(
+            'name' => $name,
+            'code' => $code,
+            'description' => sanitize_textarea_field($_POST['description']),
+            'type' => sanitize_text_field($_POST['type']),
+            'parent_id' => $parent_id ?: null,
+            'level' => $level,
+            'full_path' => $full_path,
+            'updated_at' => current_time('mysql')
+        ),
+        array('id' => $location_id),
+        array('%s', '%s', '%s', '%s', '%d', '%d', '%s', '%s'),
         array('%d')
     );
     
-    if ($result !== false) {
-        wp_send_json_success([
-            'qr_url' => $qr_url,
-            'data' => $qr_data
-        ]);
-    } else {
-        wp_send_json_error('Failed to save QR code');
+    if ($result === false) {
+        wp_send_json_error('Failed to update location');
     }
+    
+    wp_send_json_success('Location updated successfully');
 }
 
-function handle_get_qr_print_data() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    $type = sanitize_text_field($_POST['type']);
-    $id = intval($_POST['id']);
-    
-    global $wpdb;
-    
-    if ($type === 'item') {
-        $table = $wpdb->prefix . 'wh_inventory_items';
-        $item = $wpdb->get_row($wpdb->prepare("
-            SELECT i.*, c.name as category_name, l.name as location_name 
-            FROM $table i
-            LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
-            LEFT JOIN {$wpdb->prefix}wh_locations l ON i.location_id = l.id
-            WHERE i.id = %d
-        ", $id));
-        
-        if (!$item) {
-            wp_send_json_error('Item not found');
-            return;
-        }
-        
-        $additional_info = "<p>Category: " . ($item->category_name ?: 'Uncategorized') . "</p>";
-        $additional_info .= "<p>Location: " . ($item->location_name ?: 'No location') . "</p>";
-        $additional_info .= "<p>Quantity: " . number_format($item->quantity) . "</p>";
-        $additional_info .= "<p>Tested: " . ($item->tested ? '✅ Yes' : '❌ No') . "</p>";
-        
-        wp_send_json_success([
-            'qr_url' => $item->qr_code_image,
-            'name' => $item->name,
-            'id' => $item->internal_id,
-            'additional_info' => $additional_info
-        ]);
-        
-    } else {
-        $table = $wpdb->prefix . 'wh_locations';
-        $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
-        
-        if (!$location) {
-            wp_send_json_error('Location not found');
-            return;
-        }
-        
-        $additional_info = "<p>Type: " . ucwords($location->type) . "</p>";
-        if ($location->description) {
-            $additional_info .= "<p>Description: " . $location->description . "</p>";
-        }
-        
-        wp_send_json_success([
-            'qr_url' => $location->qr_code_image,
-            'name' => $location->name,
-            'id' => $location->id,
-            'additional_info' => $additional_info
-        ]);
-    }
-}
-
-function generate_qr_code_url($data, $size = 200) {
-    // Using QR Server API for QR code generation (more reliable than Google Charts)
-    $encoded_data = urlencode($data);
-    return "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&data={$encoded_data}";
-}
-
-// Bulk QR code generation handler
-function handle_generate_all_qr_codes() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    if (!current_user_can('edit_inventory')) {
-        wp_die('Unauthorized');
-    }
-    
-    $type = sanitize_text_field($_POST['type']);
-    
-    if (!in_array($type, ['items', 'locations'])) {
-        wp_send_json_error('Invalid type');
-        return;
-    }
-    
-    global $wpdb;
-    $generated_count = 0;
-    $updated_count = 0;
-    
-    if ($type === 'items') {
-        $table = $wpdb->prefix . 'wh_inventory_items';
-        $items = $wpdb->get_results("SELECT * FROM $table ORDER BY id");
-        
-        foreach ($items as $item) {
-            $qr_data = json_encode([
-                'type' => 'item',
-                'id' => $item->id,
-                'internal_id' => $item->internal_id,
-                'name' => $item->name,
-                'quantity' => $item->quantity,
-                'tested' => $item->tested ?? 0
-            ]);
-            
-            $qr_url = generate_qr_code_url($qr_data);
-            
-            $result = $wpdb->update(
-                $table,
-                array('qr_code_image' => $qr_url),
-                array('id' => $item->id),
-                array('%s'),
-                array('%d')
-            );
-            
-            if ($result !== false) {
-                if (empty($item->qr_code_image)) {
-                    $generated_count++;
-                } else {
-                    $updated_count++;
-                }
-            }
-        }
-        
-        wp_send_json_success(array(
-            'message' => "Generated QR codes for $generated_count items, updated $updated_count existing codes",
-            'generated' => $generated_count,
-            'updated' => $updated_count
-        ));
-        
-    } else {
-        $table = $wpdb->prefix . 'wh_locations';
-        $locations = $wpdb->get_results("SELECT * FROM $table ORDER BY id");
-        
-        foreach ($locations as $location) {
-            $qr_data = json_encode([
-                'type' => 'location',
-                'id' => $location->id,
-                'name' => $location->name,
-                'code' => $location->code ?? '',
-                'location_type' => $location->type
-            ]);
-            
-            $qr_url = generate_qr_code_url($qr_data);
-            
-            $result = $wpdb->update(
-                $table,
-                array('qr_code_image' => $qr_url),
-                array('id' => $location->id),
-                array('%s'),
-                array('%d')
-            );
-            
-            if ($result !== false) {
-                if (empty($location->qr_code_image)) {
-                    $generated_count++;
-                } else {
-                    $updated_count++;
-                }
-            }
-        }
-        
-        wp_send_json_success(array(
-            'message' => "Generated QR codes for $generated_count locations, updated $updated_count existing codes",
-            'generated' => $generated_count,
-            'updated' => $updated_count
-        ));
-    }
-}
-
-// Add AJAX action hooks
-add_action('wp_ajax_generate_qr_code', 'handle_generate_qr_code');
-add_action('wp_ajax_nopriv_generate_qr_code', 'handle_generate_qr_code');
-add_action('wp_ajax_get_qr_print_data', 'handle_get_qr_print_data');
-add_action('wp_ajax_generate_all_qr_codes', 'handle_generate_all_qr_codes');
-add_action('wp_ajax_nopriv_get_qr_print_data', 'handle_get_qr_print_data');
-
-// Location management AJAX handlers
 add_action('wp_ajax_get_location_data', 'handle_get_location_data');
-add_action('wp_ajax_nopriv_get_location_data', 'handle_get_location_data');
-add_action('wp_ajax_update_location', 'handle_update_location');
-add_action('wp_ajax_nopriv_update_location', 'handle_update_location');
-add_action('wp_ajax_delete_location', 'handle_delete_location');
-add_action('wp_ajax_nopriv_delete_location', 'handle_delete_location');
-
 function handle_get_location_data() {
     check_ajax_referer('warehouse_nonce', 'nonce');
     
-    $location_id = intval($_POST['location_id']);
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Insufficient permissions');
+    }
     
     global $wpdb;
-    $table = $wpdb->prefix . 'wh_locations';
     
-    $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $location_id));
+    $location_id = intval($_POST['location_id']);
+    $location = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}wh_locations WHERE id = %d", $location_id));
     
     if (!$location) {
         wp_send_json_error('Location not found');
-        return;
     }
     
     wp_send_json_success($location);
 }
 
-function handle_update_location() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    $location_id = intval($_POST['location_id']);
-    $name = sanitize_text_field($_POST['name']);
-    $code = sanitize_text_field($_POST['code']);
-    $type = sanitize_text_field($_POST['type']);
-    $description = sanitize_textarea_field($_POST['description']);
-    $parent_id = !empty($_POST['parent_id']) ? intval($_POST['parent_id']) : null;
-    
+// Get hierarchical categories for select dropdowns
+function get_hierarchical_categories_for_select($selected_id = null, $exclude_id = null) {
     global $wpdb;
-    $table = $wpdb->prefix . 'wh_locations';
     
-    // Get current location data
-    $current = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $location_id));
-    if (!$current) {
-        wp_send_json_error('Location not found');
-        return;
+    // Check if is_active column exists
+    $columns = $wpdb->get_results("SHOW COLUMNS FROM {$wpdb->prefix}wh_categories LIKE 'is_active'");
+    $where_clause = !empty($columns) ? "WHERE c.is_active = 1" : "";
+    
+    $categories = $wpdb->get_results("
+        SELECT c.*, 
+               parent.name as parent_name
+        FROM {$wpdb->prefix}wh_categories c
+        LEFT JOIN {$wpdb->prefix}wh_categories parent ON c.parent_id = parent.id
+        {$where_clause}
+        ORDER BY c.parent_id IS NULL DESC, c.parent_id, 
+                 " . (!empty($columns) ? "c.sort_order," : "") . " c.name
+    ");
+    
+    if (!$categories) {
+        return '<option value="">No categories available</option>';
     }
     
-    // Calculate level based on parent
-    $level = 1;
-    if ($parent_id) {
-        $parent = $wpdb->get_row($wpdb->prepare("SELECT level FROM $table WHERE id = %d", $parent_id));
-        if ($parent) {
-            $level = $parent->level + 1;
-        }
-    }
+    $options = '<option value="">Select Category</option>';
     
-    // Update location
-    $result = $wpdb->update(
-        $table,
-        array(
-            'name' => $name,
-            'code' => $code,
-            'type' => $type,
-            'description' => $description,
-            'parent_id' => $parent_id,
-            'level' => $level
-        ),
-        array('id' => $location_id)
-    );
-    
-    if ($result !== false) {
-        // Generate QR code if not exists
-        if (empty($current->qr_code_image)) {
-            $qr_data = json_encode([
-                'type' => 'location',
-                'id' => $location_id,
-                'name' => $name,
-                'code' => $code,
-                'location_type' => $type
-            ]);
-            
-            $qr_url = generate_qr_code_url($qr_data);
-            $wpdb->update(
-                $table,
-                array('qr_code_image' => $qr_url),
-                array('id' => $location_id)
-            );
+    foreach ($categories as $category) {
+        // Skip excluded category (used when editing to prevent circular references)
+        if ($exclude_id && $category->id == $exclude_id) {
+            continue;
         }
         
-        wp_send_json_success('Location updated successfully');
-    } else {
-        wp_send_json_error('Failed to update location');
+        $indent = '';
+        $display_name = $category->name;
+        
+        // Add visual hierarchy indication
+        if ($category->parent_id) {
+            $indent = '&nbsp;&nbsp;&nbsp;&nbsp;↳ ';
+            $display_name = $category->parent_name . ' → ' . $category->name;
+        }
+        
+        $selected = ($selected_id && $selected_id == $category->id) ? 'selected' : '';
+        
+        $options .= sprintf(
+            '<option value="%d" %s data-parent-id="%s" data-level="%s">%s%s</option>',
+            $category->id,
+            $selected,
+            $category->parent_id ?: '',
+            $category->parent_id ? '1' : '0',
+            $indent,
+            esc_html($display_name)
+        );
     }
+    
+    return $options;
 }
 
-function handle_delete_location() {
-    check_ajax_referer('warehouse_nonce', 'nonce');
-    
-    $location_id = intval($_POST['location_id']);
-    
-    global $wpdb;
-    $table = $wpdb->prefix . 'wh_locations';
-    
-    // Check if location has child locations
-    $has_children = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM $table WHERE parent_id = %d",
-        $location_id
-    ));
-    
-    if ($has_children > 0) {
-        wp_send_json_error('Cannot delete location with child locations. Please delete or move child locations first.');
-        return;
-    }
-    
-    // Check if location has items
-    $items_table = $wpdb->prefix . 'wh_inventory_items';
-    $has_items = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM $items_table WHERE location_id = %d",
-        $location_id
-    ));
-    
-    if ($has_items > 0) {
-        wp_send_json_error('Cannot delete location that contains items. Please move or delete items first.');
-        return;
-    }
-    
-    // Delete location
-    $result = $wpdb->delete(
-        $table,
-        array('id' => $location_id),
-        array('%d')
-    );
-    
-    if ($result !== false) {
-        wp_send_json_success('Location deleted successfully');
-    } else {
-        wp_send_json_error('Failed to delete location');
-    }
-}
+// Clear any existing transients for task history fix
+delete_transient('wh_task_history_fixed');
 ?> 

@@ -18,8 +18,36 @@ $locations = get_all_locations();
             
             <select id="category-filter" class="form-select">
                 <option value="">All Categories</option>
-                <?php foreach ($categories as $category): ?>
-                    <option value="<?php echo $category->id; ?>"><?php echo esc_html($category->name); ?></option>
+                <?php 
+                // Use hierarchical categories for filter dropdown too
+                global $wpdb;
+                
+                // Check if is_active column exists
+                $columns = $wpdb->get_results("SHOW COLUMNS FROM {$wpdb->prefix}wh_categories LIKE 'is_active'");
+                $where_clause = !empty($columns) ? "WHERE c.is_active = 1" : "";
+                
+                $filter_categories = $wpdb->get_results("
+                    SELECT c.*, 
+                           parent.name as parent_name
+                    FROM {$wpdb->prefix}wh_categories c
+                    LEFT JOIN {$wpdb->prefix}wh_categories parent ON c.parent_id = parent.id
+                    {$where_clause}
+                    ORDER BY c.parent_id IS NULL DESC, c.parent_id, 
+                             " . (!empty($columns) ? "c.sort_order," : "") . " c.name
+                ");
+                
+                foreach ($filter_categories as $category):
+                    $display_name = $category->name;
+                    $indent = '';
+                    
+                    if ($category->parent_id) {
+                        $indent = '&nbsp;&nbsp;&nbsp;&nbsp;↳ ';
+                        $display_name = $category->parent_name . ' → ' . $category->name;
+                    }
+                ?>
+                    <option value="<?php echo $category->id; ?>" data-level="<?php echo $category->parent_id ? '1' : '0'; ?>">
+                        <?php echo $indent . esc_html($display_name); ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
             
@@ -28,29 +56,10 @@ $locations = get_all_locations();
                 <option value="in-stock">In Stock</option>
                 <option value="low-stock">Low Stock</option>
                 <option value="out-of-stock">Out of Stock</option>
-                <option value="tested">Tested</option>
-                <option value="untested">Untested</option>
             </select>
-            
-            <select id="location-filter" class="form-select">
-                <option value="">All Locations</option>
-                <?php foreach ($locations as $location): ?>
-                    <option value="<?php echo $location->id; ?>" title="<?php echo esc_attr($location->full_path); ?>">
-                        <?php echo str_repeat('└─ ', $location->level - 1) . esc_html($location->name); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            
-            <button class="btn btn-secondary" onclick="clearAllFilters()" title="Clear all search filters">
-                <i class="fas fa-times"></i> Clear Filters
-            </button>
             
             <button class="btn btn-primary" onclick="openModal('add-item-modal')">
                 <i class="fas fa-plus"></i> Add Item
-            </button>
-            
-            <button class="btn btn-secondary" onclick="updateAllItemsFormat()" title="Update all existing items to use Item- prefix format">
-                <i class="fas fa-sync-alt"></i> Update Item IDs
             </button>
         </div>
     </div>
@@ -62,64 +71,45 @@ $locations = get_all_locations();
 </div>
 
 <!-- Add Item Modal -->
-<div id="add-item-modal" class="inventory-modal-overlay" style="display: none;">
-    <div class="inventory-modal">
-        <div class="inventory-modal-header">
-            <h3>Add New Item</h3>
-            <button type="button" id="inventory-modal-close-x" style="background:none;border:none;font-size:20px;cursor:pointer;">&times;</button>
+<div id="add-item-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 600px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Add New Item</h3>
+            <button onclick="closeModal('add-item-modal')" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
-        <div class="inventory-modal-body">
+        
+        <div style="padding: 20px !important;">
             <form id="add-item-form">
-                <table style="width:100%;border-spacing:0;">
+                <table style="width: 100% !important; border-collapse: collapse !important;">
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Item Name *</label>
-                            <input type="text" name="name" required placeholder="Enter item name"
-                                   style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Item Name *</label>
+                            <input type="text" name="name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Internal ID *</label>
-                            <div style="position:relative;">
-                                <input type="text" name="internal_id" id="internal-id-input" required placeholder="Auto-generated or enter number"
-                                       style="width:100%;padding:10px 10px 10px 60px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6b7280;font-weight:500;pointer-events:none;">Item-</span>
-                                <button type="button" id="generate-id-btn" onclick="generateNextItemId(true)" 
-                                        style="position:absolute;right:5px;top:5px;padding:5px 8px;background:#3b82f6;color:white;border:none;border-radius:3px;cursor:pointer;font-size:12px;"
-                                        title="Generate next available ID">Auto</button>
-                            </div>
-                            <small style="color:#6b7280;font-style:italic;">Enter only the number part (e.g., 45 for Item-45) or click Auto to generate</small>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Description</label>
+                            <textarea name="description" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Description</label>
-                            <textarea name="description" rows="3" placeholder="Enter description (optional)"
-                                      style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical;"></textarea>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
                                 <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Category</label>
-                                        <select name="category_id" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                            <option value="">Select Category</option>
-                                            <?php foreach ($categories as $category): ?>
-                                                <option value="<?php echo $category->id; ?>"><?php echo esc_html($category->name); ?></option>
-                                            <?php endforeach; ?>
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Category</label>
+                                        <select name="category_id" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                            <?php echo get_hierarchical_categories_for_select(); ?>
                                         </select>
+                                        <small style="display: block !important; margin-top: 4px !important; color: #6b7280 !important; font-size: 12px !important;">Subcategories show as: Parent → Child</small>
                                     </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Location</label>
-                                        <select name="location_id" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Location</label>
+                                        <select name="location_id" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                                             <option value="">Select Location</option>
                                             <?php foreach ($locations as $location): ?>
-                                                <option value="<?php echo $location->id; ?>" title="<?php echo esc_attr($location->full_path); ?>">
-                                                    <?php echo str_repeat('└─ ', $location->level - 1) . esc_html($location->name); ?>
-                                                </option>
+                                                <option value="<?php echo $location->id; ?>"><?php echo esc_html($location->name); ?></option>
                                             <?php endforeach; ?>
                                         </select>
                                     </td>
@@ -128,324 +118,358 @@ $locations = get_all_locations();
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
                                 <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Quantity *</label>
-                                        <input type="number" name="quantity" min="0" required placeholder="0"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Quantity *</label>
+                                        <input type="number" name="quantity" min="0" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                                     </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Min Stock Level</label>
-                                        <input type="number" name="min_stock_level" min="1" value="1"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Min Stock Level</label>
+                                        <input type="number" name="min_stock_level" min="1" value="1" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                                     </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
                                 <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Purchase Price (per unit)</label>
-                                        <input type="number" name="purchase_price" step="0.01" min="0" placeholder="0.00" id="purchase-price-input"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Purchase Price (per unit)</label>
+                                        <input type="number" name="purchase_price" step="0.01" min="0" id="purchase-price-input" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                                     </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Selling Price</label>
-                                        <input type="number" name="selling_price" step="0.01" min="0" placeholder="0.00"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Selling Price</label>
+                                        <input type="number" name="selling_price" step="0.01" min="0" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                                     </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
-                    <!-- Total Lot Price Section -->
                     <tr>
-                        <td style="padding:10px 0;">
-                            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:15px;">
-                                <label style="display:block;margin-bottom:10px;font-weight:bold;color:#374151;">💰 Total Lot Price</label>
-                                <input type="number" name="total_lot_price" step="0.01" min="0" placeholder="0.00" id="total-lot-price-input"
-                                       style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;margin-bottom:5px;">
-                                <small style="color:#64748b;font-style:italic;">Total amount paid for this batch/lot of items</small>
-                                
-                                <div id="lot-calculations" style="display:none;margin-top:15px;background:white;border-radius:6px;padding:15px;border:1px solid #e2e8f0;">
-                                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
-                                        <span style="color:#475569;">Per unit cost:</span>
-                                        <span id="per-unit-cost" style="font-weight:500;color:#1e293b;">$0.00</span>
-                                    </div>
-                                    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
-                                        <span style="color:#475569;">Total quantity:</span>
-                                        <span id="total-quantity" style="font-weight:500;color:#1e293b;">0</span>
-                                    </div>
-                                    <div style="display:flex;justify-content:space-between;padding:12px 0 8px 0;border-top:2px solid #e2e8f0;margin-top:8px;font-weight:600;color:#1e293b;">
-                                        <span>Total lot cost:</span>
-                                        <span id="total-lot-cost" style="color:#059669;font-size:1.1em;">$0.00</span>
-                                    </div>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">💰 Total Lot Price</label>
+                            <input type="number" name="total_lot_price" step="0.01" min="0" placeholder="0.00" id="total-lot-price-input" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                            <small style="display: block !important; margin-top: 4px !important; color: #6b7280 !important; font-size: 12px !important;">Total amount paid for this batch/lot of items</small>
+                            
+                            <div id="lot-calculations" style="display: none; margin-top: 10px !important; padding: 10px !important; background: #f9fafb !important; border-radius: 4px !important; border: 1px solid #e5e7eb !important;">
+                                <div style="display: flex !important; justify-content: space-between !important; margin-bottom: 5px !important;">
+                                    <span style="color: #6b7280 !important;">Per unit cost:</span>
+                                    <span id="per-unit-cost" style="font-weight: 600 !important;">$0.00</span>
+                                </div>
+                                <div style="display: flex !important; justify-content: space-between !important; margin-bottom: 5px !important;">
+                                    <span style="color: #6b7280 !important;">Total quantity:</span>
+                                    <span id="total-quantity" style="font-weight: 600 !important;">0</span>
+                                </div>
+                                <div style="display: flex !important; justify-content: space-between !important; padding-top: 5px !important; border-top: 1px solid #e5e7eb !important;">
+                                    <span style="font-weight: 600 !important; color: #111827 !important;">Total lot cost:</span>
+                                    <span id="total-lot-cost" style="font-weight: 600 !important; color: #111827 !important;">$0.00</span>
                                 </div>
                             </div>
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Supplier</label>
-                            <input type="text" name="supplier" placeholder="Enter supplier name"
-                                   style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:flex;align-items:center;font-weight:bold;cursor:pointer;">
-                                <input type="checkbox" name="tested" value="1" style="margin-right:8px;transform:scale(1.2);">
-                                ✅ Item has been tested
-                            </label>
-                            <small style="color:#6b7280;font-style:italic;margin-left:24px;">Check this box if the item has been tested and verified to be working properly</small>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Supplier</label>
+                            <input type="text" name="supplier" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                 </table>
             </form>
         </div>
-        <div class="inventory-modal-footer">
-            <button type="button" id="inventory-modal-cancel-btn"
-                    style="padding:10px 20px;margin-right:10px;background:#f5f5f5;border:1px solid #ccc;border-radius:4px;cursor:pointer;">Cancel</button>
-            <button type="button" id="inventory-modal-submit-btn"
-                    style="padding:10px 20px;background:#007cba;color:white;border:none;border-radius:4px;cursor:pointer;">Add Item</button>
+        
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeModal('add-item-modal')" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="button" onclick="submitAddItem()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Add Item</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Item Modal -->
+<div id="edit-item-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 600px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Edit Item</h3>
+            <button onclick="closeModal('edit-item-modal')" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
+        </div>
+        
+        <div style="padding: 20px !important;">
+            <form id="edit-item-form">
+                <input type="hidden" name="id" value="">
+                <table style="width: 100% !important; border-collapse: collapse !important;">
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Item Name *</label>
+                            <input type="text" name="name" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Description</label>
+                            <textarea name="description" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Category</label>
+                                        <select name="category_id" id="edit-category-select" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                            <?php echo get_hierarchical_categories_for_select(); ?>
+                                        </select>
+                                        <small style="display: block !important; margin-top: 4px !important; color: #6b7280 !important; font-size: 12px !important;">Subcategories show as: Parent → Child</small>
+                                    </td>
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Location</label>
+                                        <select name="location_id" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                            <option value="">Select Location</option>
+                                            <?php foreach ($locations as $location): ?>
+                                                <option value="<?php echo $location->id; ?>"><?php echo esc_html($location->name); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Quantity *</label>
+                                        <input type="number" name="quantity" min="0" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Min Stock Level</label>
+                                        <input type="number" name="min_stock_level" min="1" value="1" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Purchase Price</label>
+                                        <input type="number" name="purchase_price" step="0.01" min="0" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Selling Price</label>
+                                        <input type="number" name="selling_price" step="0.01" min="0" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Total Lot Price</label>
+                            <input type="number" name="total_lot_price" step="0.01" min="0" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <table style="width: 100% !important; border-collapse: collapse !important;">
+                                <tr>
+                                    <td style="width: 50% !important; padding-right: 15px !important; vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Supplier</label>
+                                        <input type="text" name="supplier" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                    </td>
+                                    <td style="vertical-align: top !important;">
+                                        <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Tested Status</label>
+                                        <select name="tested_status" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
+                                            <option value="not_tested">Not Tested</option>
+                                            <option value="tested">Tested</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </form>
+        </div>
+        
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeModal('edit-item-modal')" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="button" onclick="submitEditItem()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #3b82f6 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Update Item</button>
         </div>
     </div>
 </div>
 
 <!-- Sell Item Modal -->
-<div id="sell-item-modal" class="inventory-modal-overlay" style="display: none;">
-    <div class="inventory-modal" style="width: 700px;">
-        <div class="inventory-modal-header">
-            <h3>Sell Item</h3>
-            <button type="button" id="sell-modal-close-x" style="background:none;border:none;font-size:20px;cursor:pointer;">&times;</button>
+<div id="sell-item-modal" style="display: none; position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0, 0, 0, 0.5) !important; z-index: 999999 !important; overflow-y: auto !important;">
+    <div style="position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: white !important; border-radius: 8px !important; width: 90% !important; max-width: 500px !important; max-height: 80vh !important; overflow-y: auto !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;">
+        <div style="padding: 20px !important; border-bottom: 1px solid #e5e7eb !important; display: flex !important; justify-content: space-between !important; align-items: center !important;">
+            <h3 style="margin: 0 !important; color: #111827 !important; font-size: 1.25rem !important;">Record Sale</h3>
+            <button onclick="closeModal('sell-item-modal')" style="background: none !important; border: none !important; font-size: 24px !important; cursor: pointer !important; color: #6b7280 !important; padding: 0 !important; width: 30px !important; height: 30px !important; display: flex !important; align-items: center !important; justify-content: center !important;">&times;</button>
         </div>
-        <div class="inventory-modal-body">
-            <div id="sell-item-info" style="background:#f8f9fa;padding:15px;border-radius:6px;margin-bottom:20px;">
-                <!-- Item info will be populated here -->
-            </div>
-            
+        
+        <div style="padding: 20px !important;">
             <form id="sell-item-form">
-                <input type="hidden" id="sell-item-id" name="item_id">
+                <input type="hidden" name="item_id" value="">
                 
-                <table style="width:100%;border-spacing:0;">
-                    <!-- Buyer Information -->
+                <div style="background: #f9fafb !important; padding: 15px !important; border-radius: 6px !important; margin-bottom: 20px !important; border: 1px solid #e5e7eb !important;">
+                    <h4 style="margin: 0 0 10px 0 !important; color: #374151 !important;">Item: <span id="sell-item-name" style="color: #111827 !important; font-weight: 600 !important;"></span></h4>
+                    <p style="margin: 0 !important; color: #6b7280 !important; font-size: 14px !important;">Available Stock: <span id="sell-available-stock" style="font-weight: 600 !important; color: #059669 !important;"></span></p>
+                </div>
+                
+                <table style="width: 100% !important; border-collapse: collapse !important;">
                     <tr>
-                        <td colspan="2" style="padding:15px 0 10px 0;">
-                            <h4 style="margin:0;color:#374151;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">👤 Buyer Information</h4>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Quantity to Sell *</label>
+                            <input type="number" name="quantity" min="1" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
-                                <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Buyer Name *</label>
-                                        <input type="text" name="buyer_name" required placeholder="Enter buyer's full name"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                    </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Phone Number *</label>
-                                        <input type="tel" name="buyer_phone" required placeholder="Enter phone number"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                    </td>
-                                </tr>
-                            </table>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Unit Price *</label>
+                            <input type="number" name="unit_price" step="0.01" min="0" required style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Buyer Email</label>
-                            <input type="email" name="buyer_email" placeholder="Enter email address (optional)"
-                                   style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Customer Name</label>
+                            <input type="text" name="customer_name" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Buyer Address</label>
-                            <textarea name="buyer_address" rows="2" placeholder="Enter buyer's address (optional)"
-                                      style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical;"></textarea>
-                        </td>
-                    </tr>
-                    
-                    <!-- Sale Details -->
-                    <tr>
-                        <td colspan="2" style="padding:15px 0 10px 0;">
-                            <h4 style="margin:0;color:#374151;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">💰 Sale Details</h4>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
-                                <tr>
-                                    <td style="width:33%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Quantity *</label>
-                                        <input type="number" name="quantity" min="1" required placeholder="1"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"
-                                               onchange="calculateTotal()">
-                                    </td>
-                                    <td style="width:33%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Unit Price *</label>
-                                        <input type="number" name="unit_price" step="0.01" min="0" required placeholder="0.00"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"
-                                               onchange="calculateTotal()">
-                                    </td>
-                                    <td style="width:33%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Total Amount</label>
-                                        <input type="number" name="total_amount" step="0.01" readonly
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;background:#f9f9f9;">
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
-                                <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Payment Method</label>
-                                        <select name="payment_method" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                            <option value="cash">Cash</option>
-                                            <option value="card">Credit/Debit Card</option>
-                                            <option value="bank_transfer">Bank Transfer</option>
-                                            <option value="check">Check</option>
-                                            <option value="other">Other</option>
-                                        </select>
-                                    </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Warranty Period</label>
-                                        <select name="warranty_period" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                            <option value="">No Warranty</option>
-                                            <option value="30_days">30 Days</option>
-                                            <option value="90_days">90 Days</option>
-                                            <option value="6_months">6 Months</option>
-                                            <option value="1_year">1 Year</option>
-                                            <option value="2_years">2 Years</option>
-                                            <option value="custom">Custom</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <label style="display:block;margin-bottom:5px;font-weight:bold;">Sale Notes</label>
-                            <textarea name="sale_notes" rows="3" placeholder="Additional notes about this sale (optional)"
-                                      style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:vertical;"></textarea>
-                        </td>
-                    </tr>
-                    
-                    <!-- Seller Information -->
-                    <tr>
-                        <td colspan="2" style="padding:15px 0 10px 0;">
-                            <h4 style="margin:0;color:#374151;border-bottom:2px solid #e5e7eb;padding-bottom:8px;">🏪 Seller Information</h4>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:10px 0;">
-                            <table style="width:100%;border-spacing:10px 0;">
-                                <tr>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Sold By</label>
-                                        <input type="text" name="sold_by_name" readonly value="<?php echo esc_attr(wp_get_current_user()->display_name); ?>"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;background:#f9f9f9;">
-                                    </td>
-                                    <td style="width:50%;">
-                                        <label style="display:block;margin-bottom:5px;font-weight:bold;">Sale Date</label>
-                                        <input type="datetime-local" name="sale_date" value="<?php echo date('Y-m-d\TH:i'); ?>"
-                                               style="width:100%;padding:10px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;">
-                                    </td>
-                                </tr>
-                            </table>
+                        <td style="padding: 8px 0 !important; vertical-align: top !important;">
+                            <label style="display: block !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 5px !important;">Notes</label>
+                            <textarea name="notes" rows="3" style="width: 100% !important; padding: 8px 12px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; font-size: 14px !important; background: white !important; box-sizing: border-box !important; display: block !important; resize: vertical !important; font-family: inherit !important;"></textarea>
                         </td>
                     </tr>
                 </table>
             </form>
         </div>
-        <div class="inventory-modal-footer">
-            <button type="button" id="sell-modal-cancel-btn"
-                    style="padding:10px 20px;margin-right:10px;background:#f5f5f5;border:1px solid #ccc;border-radius:4px;cursor:pointer;">Cancel</button>
-            <button type="button" id="sell-modal-submit-btn"
-                    style="padding:10px 20px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;">Complete Sale</button>
+        
+        <div style="padding: 20px !important; border-top: 1px solid #e5e7eb !important; display: flex !important; justify-content: flex-end !important; gap: 10px !important;">
+            <button type="button" onclick="closeModal('sell-item-modal')" style="padding: 8px 16px !important; border: 1px solid #d1d5db !important; border-radius: 4px !important; background: white !important; color: #374151 !important; cursor: pointer !important; font-size: 14px !important;">Cancel</button>
+            <button type="button" onclick="submitSaleRecord()" style="padding: 8px 16px !important; border: none !important; border-radius: 4px !important; background: #059669 !important; color: white !important; cursor: pointer !important; font-size: 14px !important;">Record Sale</button>
         </div>
     </div>
 </div>
 
+<style>
+/* Hierarchical Category Dropdown Styling */
+select option[data-level="1"] {
+    padding-left: 20px !important;
+    color: #6b7280 !important;
+    font-style: italic;
+}
+
+select option[data-level="0"] {
+    font-weight: 600 !important;
+    color: #111827 !important;
+}
+
+/* Enhanced styling for category dropdowns */
+.form-select option[data-level="1"]:before {
+    content: "  ↳ ";
+    color: #9ca3af;
+}
+
+/* Visual separator for better hierarchy visibility */
+select option[data-parent-id]:not([data-parent-id=""]) {
+    background-color: #f9fafb !important;
+    border-left: 3px solid #e5e7eb !important;
+}
+
+/* Better visual feedback for hierarchy in the edit form */
+#edit-category-select option[data-level="1"],
+select[name="category_id"] option[data-level="1"] {
+    background: linear-gradient(90deg, #f3f4f6 0%, #ffffff 15%) !important;
+    border-left: 2px solid #d1d5db !important;
+    padding-left: 25px !important;
+}
+
+/* Small text styling for helper text */
+small {
+    font-size: 11px !important;
+    color: #6b7280 !important;
+    margin-top: 2px !important;
+}
+</style>
+
 <script>
+// Load inventory items on page load
+jQuery(document).ready(function() {
+    console.log('Inventory page loaded');
+    console.log('warehouse_ajax object:', typeof warehouse_ajax !== 'undefined' ? warehouse_ajax : 'NOT FOUND');
+    
+    if (typeof warehouse_ajax === 'undefined') {
+        document.getElementById('inventory-grid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><h3>Configuration Error</h3><p>AJAX not properly configured. Check if scripts are loaded.</p></div>';
+        return;
+    }
+    
+    // Check for URL parameters to set filters
+    const urlParams = new URLSearchParams(window.location.search);
+    const categoryParam = urlParams.get('category');
+    const categoryNameParam = urlParams.get('category_name');
+    const itemParam = urlParams.get('item');
+    const highlightParam = urlParams.get('highlight');
+    
+    // Set category filter if provided
+    if (categoryParam) {
+        document.getElementById('category-filter').value = categoryParam;
+        console.log('Set category filter to:', categoryParam);
+        
+        // Show notification about the filter
+        if (categoryNameParam) {
+            showNotification(`Showing items from category: ${decodeURIComponent(categoryNameParam)}`, 'info');
+        }
+    }
+    
+    // Store item to highlight if provided
+    if (itemParam && highlightParam === 'true') {
+        window.highlightItemId = itemParam;
+        console.log('Will highlight item:', itemParam);
+    }
+    
+    loadInventoryItems();
+    
+    // Add event listeners for search and filters
+    document.getElementById('inventory-search').addEventListener('input', loadInventoryItems);
+    document.getElementById('category-filter').addEventListener('change', loadInventoryItems);
+    document.getElementById('status-filter').addEventListener('change', loadInventoryItems);
+});
+
 // Load inventory items
 function loadInventoryItems() {
+    console.log('Loading inventory items...');
+    
     const search = document.getElementById('inventory-search').value;
     const category = document.getElementById('category-filter').value;
     const status = document.getElementById('status-filter').value;
-    const location = document.getElementById('location-filter').value;
+    
+    console.log('Search filters:', { search, category, status });
     
     jQuery.post(warehouse_ajax.ajax_url, {
         action: 'get_inventory_items',
         nonce: warehouse_ajax.nonce,
         search: search,
         category: category,
-        status: status,
-        location: location
+        status: status
     }, function(response) {
+        console.log('AJAX Response:', response);
         if (response.success) {
-            renderInventoryGrid(response.data);
+            console.log('Items found:', response.data.items.length);
+            renderInventoryGrid(response.data.items);
+        } else {
+            console.error('AJAX Error:', response.data);
+            document.getElementById('inventory-grid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><h3>Error loading items</h3><p>' + response.data + '</p></div>';
         }
+    }).fail(function(xhr, status, error) {
+        console.error('AJAX Failed:', { xhr, status, error });
+        document.getElementById('inventory-grid').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><h3>Connection Error</h3><p>Failed to load inventory items. Check console for details.</p></div>';
     });
-}
-
-// Function to filter by specific location (can be called from other pages)
-function filterByLocation(locationId, locationName) {
-    // Set the location filter
-    document.getElementById('location-filter').value = locationId;
-    
-    // Clear other filters for focus
-    document.getElementById('inventory-search').value = '';
-    document.getElementById('category-filter').value = '';
-    document.getElementById('status-filter').value = '';
-    
-    // Load items for this location
-    loadInventoryItems();
-    
-    // Show a notification
-    if (locationName) {
-        showNotification(`Showing items in: ${locationName}`, 'info');
-    }
-}
-
-// Simple notification function
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 20px;
-        background: ${type === 'info' ? '#3b82f6' : '#10b981'};
-        color: white;
-        border-radius: 6px;
-        z-index: 10000;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        animation: slideInRight 0.3s ease-out;
-    `;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOutRight 0.3s ease-in';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, 3000);
 }
 
 // Render inventory grid
@@ -464,20 +488,28 @@ function renderInventoryGrid(items) {
     }
     
     grid.innerHTML = items.map(item => `
-        <div class="inventory-item">
+        <div class="inventory-item" data-item-id="${item.id}">
             <div class="item-header">
                 <div class="item-info">
-                    <h3>${item.name}</h3>
+                    <h3 class="item-name">${item.name}</h3>
                     <div class="item-id">ID: ${item.internal_id}</div>
+                    <div class="item-status-badges">
+                        <button class="tested-badge ${(item.tested_status === 'tested' || item.tested_status === '1') ? 'tested' : 'not-tested'}" 
+                                onclick="toggleTestedStatus(${item.id}, this)" 
+                                title="Click to toggle tested status">
+                            <i class="fas fa-${(item.tested_status === 'tested' || item.tested_status === '1') ? 'check-circle' : 'clock'}"></i>
+                            ${(item.tested_status === 'tested' || item.tested_status === '1') ? 'Tested' : 'Not Tested'}
+                        </button>
+                    </div>
                 </div>
                 <div class="item-actions">
-                    <button class="btn-icon" onclick="editItem(${item.id})" title="Edit">
+                    <button class="btn-icon edit-btn" onclick="editItem(${item.id})" title="Edit">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button class="btn-icon" onclick="sellItem(${item.id})" title="Sell">
+                    <button class="btn-icon sell-btn" onclick="sellItem(${item.id})" title="Sell">
                         <i class="fas fa-shopping-cart"></i>
                     </button>
-                    <button class="btn-icon" onclick="deleteItem(${item.id})" title="Delete">
+                    <button class="btn-icon delete-btn" onclick="deleteItem(${item.id})" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -502,707 +534,163 @@ function renderInventoryGrid(items) {
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Location</div>
-                    <div class="detail-value">${item.location_path || item.location_name || 'No location'}</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Tested</div>
-                    <div class="detail-value">
-                        <span class="tested-badge ${item.tested == '1' ? 'tested-yes' : 'tested-no'}">
-                            ${item.tested == '1' ? '✅ Tested' : '❌ Not Tested'}
-                        </span>
-                    </div>
+                    <div class="detail-value">${item.location_name || 'No location'}</div>
                 </div>
             </div>
             
             ${item.purchase_price || item.selling_price || item.total_lot_price ? `
                 <div class="item-pricing">
-                    ${item.purchase_price ? `<span class="price-label">Cost: $${parseFloat(item.purchase_price).toFixed(2)}</span>` : ''}
-                    ${item.selling_price ? `<span class="price-label">Sell: $${parseFloat(item.selling_price).toFixed(2)}</span>` : ''}
-                    ${item.total_lot_price ? `<span class="price-label lot-price">Batch: $${parseFloat(item.total_lot_price).toFixed(2)}</span>` : ''}
+                    ${item.purchase_price ? `<span class="price-label cost-price">Cost: $${parseFloat(item.purchase_price).toFixed(2)}</span>` : ''}
+                    ${item.selling_price ? `<span class="price-label sell-price">Sell: $${parseFloat(item.selling_price).toFixed(2)}</span>` : ''}
+                    ${item.total_lot_price ? `<span class="price-label lot-price">Lot: $${parseFloat(item.total_lot_price).toFixed(2)}</span>` : ''}
                 </div>
             ` : ''}
         </div>
     `).join('');
+    
+    // Highlight specific item if requested
+    if (window.highlightItemId) {
+        setTimeout(() => {
+            const itemElement = document.querySelector(`[data-item-id="${window.highlightItemId}"]`);
+            if (itemElement) {
+                itemElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                itemElement.style.animation = 'highlight-flash 2s ease-in-out';
+                itemElement.style.border = '3px solid #10b981';
+                itemElement.style.backgroundColor = '#ecfdf5';
+                
+                // Remove highlight after animation
+                setTimeout(() => {
+                    itemElement.style.animation = '';
+                    itemElement.style.border = '';
+                    itemElement.style.backgroundColor = '';
+                }, 3000);
+            }
+            
+            // Clear the highlight flag
+            window.highlightItemId = null;
+        }, 500);
+    }
 }
 
-// Submit add/edit item form
+// Submit add item form
 function submitAddItem() {
     const form = document.getElementById('add-item-form');
     const formData = new FormData(form);
-    const submitBtn = document.getElementById('inventory-modal-submit-btn');
-    const isEditMode = submitBtn.getAttribute('data-mode') === 'edit';
-    const itemId = submitBtn.getAttribute('data-item-id');
     
     // Convert FormData to object for AJAX
     const data = {
-        action: isEditMode ? 'update_inventory_item' : 'add_inventory_item',
+        action: 'add_inventory_item',
         nonce: warehouse_ajax.nonce
     };
-    
-    // Add item ID for edit mode
-    if (isEditMode && itemId) {
-        data.item_id = itemId;
-    }
     
     for (let [key, value] of formData.entries()) {
         data[key] = value;
     }
     
-    // Ensure Internal ID has Item- prefix
-    if (data.internal_id && !data.internal_id.startsWith('Item-')) {
-        data.internal_id = 'Item-' + data.internal_id;
-    }
-    
-    // Don't send purchase_price in edit mode to prevent changes
-    if (isEditMode) {
-        delete data.purchase_price;
-    }
-    
-    console.log('Submitting form data:', data);
-    
     jQuery.post(warehouse_ajax.ajax_url, data, function(response) {
         if (response.success) {
             closeModal('add-item-modal');
+            form.reset();
             loadInventoryItems();
-            showNotification(isEditMode ? 'Item updated successfully!' : 'Item added successfully!', 'success');
+            showNotification('Item added successfully!', 'success');
         } else {
             showNotification('Error: ' + response.data, 'error');
         }
     });
 }
 
-// Clear all filters function
-function clearAllFilters() {
-    document.getElementById('inventory-search').value = '';
-    document.getElementById('category-filter').value = '';
-    document.getElementById('status-filter').value = '';
-    document.getElementById('location-filter').value = '';
-    loadInventoryItems();
+// Submit edit item form
+function submitEditItem() {
+    const form = document.getElementById('edit-item-form');
+    const formData = new FormData(form);
+    
+    // Convert FormData to object for AJAX
+    const data = {
+        action: 'update_inventory_item',
+        nonce: warehouse_ajax.nonce
+    };
+    
+    for (let [key, value] of formData.entries()) {
+        data[key] = value;
+    }
+    
+    jQuery.post(warehouse_ajax.ajax_url, data, function(response) {
+        if (response.success) {
+            closeModal('edit-item-modal');
+            loadInventoryItems();
+            showNotification('Item updated successfully!', 'success');
+        } else {
+            showNotification('Error: ' + (response.data || 'Failed to update item'), 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error updating item', 'error');
+    });
+}
+
+// Submit sale record
+function submitSaleRecord() {
+    const form = document.getElementById('sell-item-form');
+    const formData = new FormData(form);
+    
+    // Basic validation
+    const quantity = parseInt(formData.get('quantity'));
+    const unitPrice = parseFloat(formData.get('unit_price'));
+    
+    if (!quantity || quantity <= 0) {
+        showNotification('Please enter a valid quantity', 'error');
+        return;
+    }
+    
+    if (!unitPrice || unitPrice <= 0) {
+        showNotification('Please enter a valid unit price', 'error');
+        return;
+    }
+    
+    // Convert FormData to object for AJAX
+    const data = {
+        action: 'record_sale',
+        nonce: warehouse_ajax.nonce
+    };
+    
+    for (let [key, value] of formData.entries()) {
+        data[key] = value;
+    }
+    
+    jQuery.post(warehouse_ajax.ajax_url, data, function(response) {
+        if (response.success) {
+            closeModal('sell-item-modal');
+            form.reset();
+            loadInventoryItems();
+            showNotification('Sale recorded successfully!', 'success');
+        } else {
+            showNotification('Error: ' + (response.data || 'Failed to record sale'), 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error recording sale', 'error');
+    });
 }
 
 // Modal functions
 function openModal(modalId) {
     document.getElementById(modalId).style.display = 'block';
-    
-    // Auto-generate ID when opening add item modal for new items
-    if (modalId === 'add-item-modal') {
-        const submitBtn = document.getElementById('inventory-modal-submit-btn');
-        const isEditMode = submitBtn.getAttribute('data-mode') === 'edit';
-        
-        // Only auto-generate for new items, not when editing
-        if (!isEditMode) {
-            const input = document.getElementById('internal-id-input');
-            if (input && !input.value.trim()) {
-                generateNextItemId(false); // Don't show notifications for auto-generation
-            }
-        }
-    }
 }
 
 function closeModal(modalId) {
     document.getElementById(modalId).style.display = 'none';
-    if (modalId === 'add-item-modal') {
-        resetAddItemModal();
-    }
 }
 
-// Reset modal to add mode
-function resetAddItemModal() {
-    const form = document.getElementById('add-item-form');
-    if (form) form.reset();
-    
-    // Reset modal title
-    document.querySelector('#add-item-modal .inventory-modal-header h3').textContent = 'Add New Item';
-    
-    // Reset submit button
-    const submitBtn = document.getElementById('inventory-modal-submit-btn');
-    submitBtn.textContent = 'Add Item';
-    submitBtn.removeAttribute('data-mode');
-    submitBtn.removeAttribute('data-item-id');
-    
-    // Clear the internal ID field
-    const internalIdInput = document.getElementById('internal-id-input');
-    if (internalIdInput) {
-        internalIdInput.value = '';
-        internalIdInput.removeAttribute('data-has-value');
-    }
-    
-    // Reset purchase price field to editable
-    const purchasePriceInput = document.getElementById('purchase-price-input');
-    purchasePriceInput.readOnly = false;
-    purchasePriceInput.style.backgroundColor = '';
-    purchasePriceInput.style.color = '';
-    purchasePriceInput.title = '';
-}
+// Search and filter handlers
+document.getElementById('inventory-search').addEventListener('input', loadInventoryItems);
+document.getElementById('category-filter').addEventListener('change', loadInventoryItems);
+document.getElementById('status-filter').addEventListener('change', loadInventoryItems);
 
-// Auto-generate next available Item ID
-function generateNextItemId(showNotifications = true) {
-    const button = document.getElementById('generate-id-btn');
-    const input = document.getElementById('internal-id-input');
-    
-    // Show loading state
-    if (button) {
-        button.textContent = '...';
-        button.disabled = true;
-    }
-    
-    jQuery.post(warehouse_ajax.ajax_url, {
-        action: 'get_next_item_id',
-        nonce: warehouse_ajax.nonce
-    }, function(response) {
-        if (response.success) {
-            // Extract just the number part from Item-X format
-            const fullId = response.data;
-            const numberPart = fullId.replace('Item-', '');
-            input.value = numberPart;
-            
-            // Only show notification if explicitly requested (manual button click)
-            if (showNotifications) {
-                showNotification(`Generated ID: ${fullId}`, 'success');
-            }
-        } else {
-            if (showNotifications) {
-                showNotification('Failed to generate ID', 'error');
-            }
-        }
-    }).always(function() {
-        // Reset button state
-        if (button) {
-            button.textContent = 'Auto';
-            button.disabled = false;
-        }
-    });
-}
-
-// Handle Internal ID input formatting
-function setupInternalIdHandling() {
-    const input = document.getElementById('internal-id-input');
-    
-    if (!input) return;
-    
-    // Handle input formatting
-    input.addEventListener('input', function(e) {
-        let value = e.target.value;
-        
-        // Remove any non-numeric characters except for existing Item- prefix
-        value = value.replace(/[^0-9]/g, '');
-        
-        // Update the input with just the number
-        e.target.value = value;
-    });
-    
-    // Handle form submission to add prefix
-    const form = document.getElementById('add-item-form');
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            const internalIdValue = input.value.trim();
-            if (internalIdValue && !internalIdValue.startsWith('Item-')) {
-                // Add the Item- prefix if not already present
-                input.value = 'Item-' + internalIdValue;
-            }
-        });
-    }
-}
-
-// Update all existing items to use Item- prefix format
-function updateAllItemsFormat() {
-    if (!confirm('This will update ALL existing items to use the new Item- prefix format (e.g., Item-1, Item-2, etc.). This action cannot be undone. Continue?')) {
-        return;
-    }
-    
-    showNotification('Updating all items to new format...', 'info');
-    
-    jQuery.post(warehouse_ajax.ajax_url, {
-        action: 'update_all_items_format',
-        nonce: warehouse_ajax.nonce
-    }, function(response) {
-        if (response.success) {
-            const data = response.data;
-            showNotification(`Success! Updated ${data.updated_count} of ${data.total_items} items to new Item- format.`, 'success');
-            
-            // Reload the inventory to show updated IDs
-            setTimeout(() => {
-                loadInventoryItems();
-            }, 2000);
-            
-            // Show detailed results in console for debugging
-            console.log('ID Update Results:', data.id_map);
-        } else {
-            showNotification('Error updating items: ' + response.data, 'error');
-        }
-    }).fail(function() {
-        showNotification('Network error while updating items', 'error');
-    });
-}
-
-// Initialize event listeners
+// Load items on page load
 document.addEventListener('DOMContentLoaded', function() {
-    // Setup internal ID handling
-    setupInternalIdHandling();
-    
-    // Check for dashboard filter on page load
-    const dashboardFilter = localStorage.getItem('dashboard_filter');
-    if (dashboardFilter) {
-        console.log('Applying dashboard filter:', dashboardFilter);
-        
-        // Apply the filter
-        if (dashboardFilter === 'all') {
-            // Clear all filters for showing all items
-            document.getElementById('inventory-search').value = '';
-            document.getElementById('category-filter').value = '';
-            document.getElementById('status-filter').value = '';
-            document.getElementById('location-filter').value = '';
-        } else {
-            // Apply the specific status filter
-            document.getElementById('status-filter').value = dashboardFilter;
-            
-            // Clear other filters for focus
-            document.getElementById('inventory-search').value = '';
-            document.getElementById('category-filter').value = '';
-            document.getElementById('location-filter').value = '';
-        }
-        
-        // Clear the stored filter
-        localStorage.removeItem('dashboard_filter');
-        
-        // Show notification
-        const filterName = dashboardFilter === 'all' ? 'All Items' : 
-                          dashboardFilter.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-        showNotification(`Showing: ${filterName}`, 'info');
-    }
-    
-    // Check for item search from dashboard alerts
-    const searchItemId = localStorage.getItem('dashboard_search_item');
-    if (searchItemId) {
-        console.log('Searching for item ID:', searchItemId);
-        
-        // Set search to the item ID
-        document.getElementById('inventory-search').value = searchItemId;
-        
-        // Clear other filters
-        document.getElementById('category-filter').value = '';
-        document.getElementById('status-filter').value = '';
-        document.getElementById('location-filter').value = '';
-        
-        // Clear the stored search
-        localStorage.removeItem('dashboard_search_item');
-        
-        // Show notification
-        showNotification(`Searching for item ID: ${searchItemId}`, 'info');
-    }
-    
-    // Search and filter handlers
-    document.getElementById('inventory-search').addEventListener('input', loadInventoryItems);
-    document.getElementById('category-filter').addEventListener('change', loadInventoryItems);
-    document.getElementById('status-filter').addEventListener('change', loadInventoryItems);
-    document.getElementById('location-filter').addEventListener('change', loadInventoryItems);
-    
-    // Modal event listeners
-    const xButton = document.getElementById('inventory-modal-close-x');
-    if (xButton) {
-        xButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log('Inventory modal X button clicked');
-            closeModal('add-item-modal');
-        });
-    }
-    
-    const cancelButton = document.getElementById('inventory-modal-cancel-btn');
-    if (cancelButton) {
-        cancelButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log('Inventory modal Cancel button clicked');
-            closeModal('add-item-modal');
-        });
-    }
-    
-    const submitButton = document.getElementById('inventory-modal-submit-btn');
-    if (submitButton) {
-        submitButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            console.log('Inventory modal Submit button clicked');
-            submitAddItem();
-        });
-    }
-    
-    // Sell modal event listeners
-    const sellCloseButton = document.getElementById('sell-modal-close-x');
-    if (sellCloseButton) {
-        sellCloseButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            closeSellModal();
-        });
-    }
-    
-    const sellCancelButton = document.getElementById('sell-modal-cancel-btn');
-    if (sellCancelButton) {
-        sellCancelButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            closeSellModal();
-        });
-    }
-    
-    const sellSubmitButton = document.getElementById('sell-modal-submit-btn');
-    if (sellSubmitButton) {
-        sellSubmitButton.addEventListener('click', function(e) {
-            e.preventDefault();
-            submitSellForm();
-        });
-    }
-    
-    // Load items on page load
     loadInventoryItems();
+    setupLotPriceCalculations();
 });
 
-// Edit item function
-function editItem(itemId) {
-    console.log('Edit item:', itemId);
-    
-    // Get item details first
-    const formData = new FormData();
-    formData.append('action', 'get_inventory_item');
-    formData.append('nonce', warehouse_ajax.nonce);
-    formData.append('item_id', itemId);
-    
-    fetch(warehouse_ajax.ajax_url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            openEditModal(data.data);
-        } else {
-            alert('Error: Could not load item details');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error loading item details');
-    });
-}
-
-// Open edit modal with pre-populated data
-function openEditModal(item) {
-    console.log('Opening edit modal for item:', item);
-    
-    // Change modal title
-    document.querySelector('#add-item-modal .inventory-modal-header h3').textContent = 'Edit Item';
-    
-    // Change submit button text and action
-    const submitBtn = document.getElementById('inventory-modal-submit-btn');
-    submitBtn.textContent = 'Update Item';
-    submitBtn.setAttribute('data-mode', 'edit');
-    submitBtn.setAttribute('data-item-id', item.id);
-    
-    // Populate form fields with existing data
-    document.querySelector('input[name="name"]').value = item.name || '';
-    
-    // Handle internal ID - extract number part if it has Item- prefix
-    const internalIdInput = document.querySelector('input[name="internal_id"]');
-    let internalIdValue = item.internal_id || '';
-    if (internalIdValue.startsWith('Item-')) {
-        internalIdValue = internalIdValue.replace('Item-', '');
-    }
-    internalIdInput.value = internalIdValue;
-    internalIdInput.dataset.hasValue = 'true'; // Prevent auto-generation
-    
-    document.querySelector('textarea[name="description"]').value = item.description || '';
-    document.querySelector('select[name="category_id"]').value = item.category_id || '';
-    document.querySelector('select[name="location_id"]').value = item.location_id || '';
-    document.querySelector('input[name="quantity"]').value = item.quantity || '';
-    document.querySelector('input[name="min_stock_level"]').value = item.min_stock_level || '';
-    
-    // Populate prices
-    const purchasePriceInput = document.getElementById('purchase-price-input');
-    purchasePriceInput.value = item.purchase_price || '';
-    // Make purchase price readonly with visual indication
-    purchasePriceInput.readOnly = true;
-    purchasePriceInput.style.backgroundColor = '#f3f4f6';
-    purchasePriceInput.style.color = '#6b7280';
-    purchasePriceInput.title = 'Purchase price cannot be edited to maintain cost basis integrity';
-    
-    document.querySelector('input[name="selling_price"]').value = item.selling_price || '';
-    document.getElementById('total-lot-price-input').value = item.total_lot_price || '';
-    document.querySelector('input[name="supplier"]').value = item.supplier || '';
-    
-    // Set tested checkbox
-    document.querySelector('input[name="tested"]').checked = item.tested == '1';
-    
-    // Show the modal
-    openModal('add-item-modal');
-}
-
-// Sell item function
-function sellItem(itemId) {
-    console.log('Sell item:', itemId);
-    
-    // Get item details first
-    const formData = new FormData();
-    formData.append('action', 'get_inventory_item');
-    formData.append('nonce', warehouse_ajax.nonce);
-    formData.append('item_id', itemId);
-    
-    fetch(warehouse_ajax.ajax_url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            openSellModal(data.data);
-        } else {
-            alert('Error: Could not load item details');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error loading item details');
-    });
-}
-
-// Open sell modal with item details
-function openSellModal(item) {
-    // Populate item info
-    document.getElementById('sell-item-info').innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h4 style="margin: 0 0 5px 0; color: #1f2937;">${item.name}</h4>
-                <p style="margin: 0; color: #6b7280;">ID: ${item.internal_id} | Available: ${item.quantity} units</p>
-            </div>
-            <div style="text-align: right;">
-                <span style="background: #059669; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
-                    ${item.status.replace('-', ' ').toUpperCase()}
-                </span>
-            </div>
-        </div>
-    `;
-    
-    // Set item ID
-    document.getElementById('sell-item-id').value = item.id;
-    
-    // Set default values
-    const quantityField = document.querySelector('#sell-item-form [name="quantity"]');
-    const unitPriceField = document.querySelector('#sell-item-form [name="unit_price"]');
-    
-    if (quantityField) {
-        quantityField.max = item.quantity;
-        quantityField.value = 1; // Set default quantity to 1
-    }
-    
-    if (unitPriceField) {
-        unitPriceField.value = item.selling_price || '';
-    }
-    
-    // Calculate total if both values are set
-    calculateTotal();
-    
-    // Show modal
-    document.getElementById('sell-item-modal').style.display = 'block';
-}
-
-// Calculate total amount
-function calculateTotal() {
-    const quantityField = document.querySelector('#sell-item-form [name="quantity"]');
-    const unitPriceField = document.querySelector('#sell-item-form [name="unit_price"]');
-    const totalField = document.querySelector('#sell-item-form [name="total_amount"]');
-    
-    if (!quantityField || !unitPriceField || !totalField) {
-        console.error('Could not find form fields for calculation');
-        return;
-    }
-    
-    const quantity = parseFloat(quantityField.value) || 0;
-    const unitPrice = parseFloat(unitPriceField.value) || 0;
-    const total = quantity * unitPrice;
-    
-    totalField.value = total.toFixed(2);
-    
-    console.log('Total calculated:', {
-        quantity: quantity,
-        unitPrice: unitPrice,
-        total: total
-    });
-}
-
-// Submit sell form
-function submitSellForm() {
-    console.log('Submit sell form called');
-    
-    const form = document.getElementById('sell-item-form');
-    const formData = new FormData(form);
-    
-    // Log all form data for debugging
-    console.log('Form data entries:');
-    for (let [key, value] of formData.entries()) {
-        console.log(`${key}: ${value}`);
-    }
-    
-    // Validate required fields
-    const buyerName = formData.get('buyer_name')?.trim();
-    const buyerPhone = formData.get('buyer_phone')?.trim();
-    const quantity = formData.get('quantity');
-    const unitPrice = formData.get('unit_price');
-    
-    console.log('Form validation:', {
-        buyerName: buyerName,
-        buyerPhone: buyerPhone,
-        quantity: quantity,
-        unitPrice: unitPrice
-    });
-    
-    // Check each field individually for better error reporting
-    if (!buyerName) {
-        alert('Please enter buyer name');
-        document.querySelector('#sell-item-form [name="buyer_name"]').focus();
-        return;
-    }
-    
-    if (!buyerPhone) {
-        alert('Please enter buyer phone number');
-        document.querySelector('#sell-item-form [name="buyer_phone"]').focus();
-        return;
-    }
-    
-    if (!quantity || quantity <= 0) {
-        alert('Please enter a valid quantity');
-        document.querySelector('#sell-item-form [name="quantity"]').focus();
-        return;
-    }
-    
-    if (!unitPrice || unitPrice <= 0) {
-        alert('Please enter a valid unit price');
-        document.querySelector('#sell-item-form [name="unit_price"]').focus();
-        return;
-    }
-    
-    // Add action and nonce
-    formData.append('action', 'sell_inventory_item_detailed');
-    formData.append('nonce', warehouse_ajax.nonce);
-    
-    // Disable submit button
-    const submitBtn = document.getElementById('sell-modal-submit-btn');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = 'Processing...';
-    submitBtn.disabled = true;
-    
-    console.log('Submitting sale with data:', Object.fromEntries(formData));
-    
-    fetch(warehouse_ajax.ajax_url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.text().then(text => {
-            console.log('Raw response:', text);
-            try {
-                return JSON.parse(text);
-            } catch (e) {
-                console.error('Failed to parse JSON:', e);
-                throw new Error('Invalid JSON response: ' + text);
-            }
-        });
-    })
-    .then(data => {
-        console.log('Parsed response:', data);
-        if (data.success) {
-            alert('Sale completed successfully!\nSale Number: ' + data.data.sale_number);
-            closeSellModal();
-            loadInventoryItems(); // Refresh the grid
-            // Refresh profit data if on sales page
-            if (typeof loadProfitData === 'function') {
-                loadProfitData();
-            }
-        } else {
-            console.error('Sale failed:', data);
-            alert('Error: ' + (data.data || data.message || 'Failed to complete sale'));
-        }
-    })
-    .catch(error => {
-        console.error('Fetch error:', error);
-        alert('Error completing sale: ' + error.message);
-    })
-    .finally(() => {
-        // Re-enable button
-        submitBtn.innerHTML = originalText;
-        submitBtn.disabled = false;
-    });
-}
-
-// Close sell modal
-function closeSellModal() {
-    document.getElementById('sell-item-modal').style.display = 'none';
-    document.getElementById('sell-item-form').reset();
-}
-
-// Delete item function
-function deleteItem(itemId) {
-    console.log('Delete item:', itemId);
-    
-    if (confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
-        const formData = new FormData();
-        formData.append('action', 'delete_inventory_item');
-        formData.append('nonce', warehouse_ajax.nonce);
-        formData.append('item_id', itemId);
-        
-        fetch(warehouse_ajax.ajax_url, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Item deleted successfully!');
-                loadInventoryItems(); // Refresh the grid
-            } else {
-                alert('Error: ' + (data.data?.message || 'Failed to delete item'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error deleting item');
-        });
-    }
-}
-
-
-
-function updateLotCalculations() {
-    const quantity = parseFloat(document.querySelector('input[name="quantity"]').value) || 0;
-    const purchasePrice = parseFloat(document.getElementById('purchase-price-input').value) || 0;
-    const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
-    const lotCalculations = document.getElementById('lot-calculations');
-    
-    // Show calculations if we have quantity and at least one price
-    if (quantity > 0 && (purchasePrice > 0 || totalLotPrice > 0)) {
-        lotCalculations.style.display = 'block';
-        
-        let perUnitCost = 0;
-        let totalCost = 0;
-        
-        if (totalLotPrice > 0) {
-            // Calculate from lot price
-            perUnitCost = totalLotPrice / quantity;
-            totalCost = totalLotPrice;
-        } else if (purchasePrice > 0) {
-            // Calculate from purchase price
-            perUnitCost = purchasePrice;
-            totalCost = purchasePrice * quantity;
-        }
-        
-        // Update display
-        document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
-        document.getElementById('total-quantity').textContent = quantity;
-        document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
-    } else {
-        lotCalculations.style.display = 'none';
-    }
-}
-
-// Track which field was last modified to determine calculation direction
-let lastModifiedField = null;
-
+// Lot Price Calculations
 function setupLotPriceCalculations() {
     const quantityInput = document.querySelector('input[name="quantity"]');
     const purchasePriceInput = document.getElementById('purchase-price-input');
@@ -1211,120 +699,283 @@ function setupLotPriceCalculations() {
     
     // Add event listeners for auto-calculation
     if (quantityInput && purchasePriceInput && totalLotPriceInput) {
-        quantityInput.addEventListener('input', function() {
-            lastModifiedField = 'quantity';
-            updateBidirectionalCalculations();
-        });
-        
-        purchasePriceInput.addEventListener('input', function() {
-            lastModifiedField = 'purchase_price';
-            updateBidirectionalCalculations();
-        });
-        
-        totalLotPriceInput.addEventListener('input', function() {
-            lastModifiedField = 'lot_price';
-            updateBidirectionalCalculations();
-        });
-        
-        console.log('Lot price calculations setup complete');
-    } else {
-        console.warn('Lot price calculation elements not found');
+        quantityInput.addEventListener('input', updateLotCalculations);
+        purchasePriceInput.addEventListener('input', updateLotCalculations);
+        totalLotPriceInput.addEventListener('input', updateFromLotPrice);
     }
 }
 
-function updateBidirectionalCalculations() {
+function updateLotCalculations() {
     const quantity = parseFloat(document.querySelector('input[name="quantity"]').value) || 0;
     const purchasePrice = parseFloat(document.getElementById('purchase-price-input').value) || 0;
     const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
-    const lotCalculations = document.getElementById('lot-calculations');
-    const purchasePriceInput = document.getElementById('purchase-price-input');
-    const isEditMode = purchasePriceInput && purchasePriceInput.readOnly;
     
-    if (quantity > 0) {
-        let perUnitCost = 0;
-        let totalCost = 0;
+    const lotCalculations = document.getElementById('lot-calculations');
+    
+    // Show calculations if we have quantity and either purchase price or lot price
+    if (quantity > 0 && (purchasePrice > 0 || totalLotPrice > 0)) {
+        lotCalculations.style.display = 'block';
         
-        // In edit mode, purchase price is readonly, so only allow lot price -> per unit calculations
-        if (isEditMode) {
-            if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
-                // User entered lot price - calculate per unit (display only, don't update purchase price)
-                perUnitCost = totalLotPrice / quantity;
-                totalCost = totalLotPrice;
-            } else if (lastModifiedField === 'quantity') {
-                // Quantity changed - recalculate based on lot price if available
-                if (totalLotPrice > 0) {
-                    perUnitCost = totalLotPrice / quantity;
-                    totalCost = totalLotPrice;
-                } else if (purchasePrice > 0) {
-                    // Use existing purchase price for display
-                    perUnitCost = purchasePrice;
-                    totalCost = purchasePrice * quantity;
-                    // Update lot price based on existing purchase price
-                    document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
-                }
-            }
-        } else {
-            // Normal add mode - full bidirectional calculations
-            if (lastModifiedField === 'lot_price' && totalLotPrice > 0) {
-                // User entered lot price - calculate per unit
-                perUnitCost = totalLotPrice / quantity;
-                totalCost = totalLotPrice;
-                
-                // Update purchase price to match (without triggering events)
-                document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
-                
-            } else if (lastModifiedField === 'purchase_price' && purchasePrice > 0) {
-                // User entered purchase price - calculate lot total
-                perUnitCost = purchasePrice;
-                totalCost = purchasePrice * quantity;
-                
-                // Update lot price to match (without triggering events)
-                document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
-                
-            } else if (lastModifiedField === 'quantity') {
-                // Quantity changed - recalculate based on existing values
-                if (totalLotPrice > 0) {
-                    perUnitCost = totalLotPrice / quantity;
-                    totalCost = totalLotPrice;
-                    document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
-                } else if (purchasePrice > 0) {
-                    perUnitCost = purchasePrice;
-                    totalCost = purchasePrice * quantity;
-                    document.getElementById('total-lot-price-input').value = totalCost.toFixed(2);
-                }
-            }
-        }
+        let perUnitCost = purchasePrice;
+        let totalCost = purchasePrice * quantity;
         
-        // Show calculations if we have valid data
-        if (perUnitCost > 0 && totalCost > 0) {
-            lotCalculations.style.display = 'block';
-            document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
-            document.getElementById('total-quantity').textContent = quantity;
-            document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
+        // If total lot price is entered, calculate per unit cost
+        if (totalLotPrice > 0 && quantity > 0) {
+            perUnitCost = totalLotPrice / quantity;
+            totalCost = totalLotPrice;
             
-            // Add note in edit mode
-            if (isEditMode) {
-                const existingNote = lotCalculations.querySelector('.edit-mode-note');
-                if (!existingNote) {
-                    const note = document.createElement('div');
-                    note.className = 'edit-mode-note';
-                    note.style.cssText = 'font-size:0.875rem;color:#6b7280;font-style:italic;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;';
-                    note.textContent = 'Note: Purchase price is locked to maintain cost basis integrity';
-                    lotCalculations.appendChild(note);
-                }
+            // Update purchase price field if it's empty or different
+            if (purchasePrice === 0 || Math.abs(purchasePrice - perUnitCost) > 0.01) {
+                document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
             }
-        } else {
-            lotCalculations.style.display = 'none';
         }
+        
+        // Update display values
+        document.getElementById('per-unit-cost').textContent = '$' + perUnitCost.toFixed(2);
+        document.getElementById('total-quantity').textContent = quantity;
+        document.getElementById('total-lot-cost').textContent = '$' + totalCost.toFixed(2);
     } else {
         lotCalculations.style.display = 'none';
     }
 }
 
-// Setup lot price calculations when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    setupLotPriceCalculations();
-});
+function updateFromLotPrice() {
+    const quantity = parseFloat(document.querySelector('input[name="quantity"]').value) || 0;
+    const totalLotPrice = parseFloat(document.getElementById('total-lot-price-input').value) || 0;
+    
+    if (quantity > 0 && totalLotPrice > 0) {
+        const perUnitCost = totalLotPrice / quantity;
+        document.getElementById('purchase-price-input').value = perUnitCost.toFixed(2);
+    }
+    
+    updateLotCalculations();
+}
+
+// Edit item function
+function editItem(itemId) {
+    if (!itemId) {
+        showNotification('Invalid item ID', 'error');
+        return;
+    }
+    
+    // Get item data first
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'get_inventory_items',
+        nonce: warehouse_ajax.nonce
+    }, function(response) {
+        if (response.success && response.data.items) {
+            const item = response.data.items.find(i => i.id == itemId);
+            if (item) {
+                // Populate edit form with item data
+                populateEditForm(item);
+                openModal('edit-item-modal');
+            } else {
+                showNotification('Item not found', 'error');
+            }
+        } else {
+            showNotification('Error loading item data', 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error loading item', 'error');
+    });
+}
+
+// Delete item function
+function deleteItem(itemId) {
+    if (!itemId) {
+        showNotification('Invalid item ID', 'error');
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+        return;
+    }
+    
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'delete_inventory_item',
+        nonce: warehouse_ajax.nonce,
+        id: itemId
+    }, function(response) {
+        if (response.success) {
+            showNotification('Item deleted successfully', 'success');
+            loadInventoryItems(); // Reload the inventory grid
+        } else {
+            showNotification(response.data || 'Failed to delete item', 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error deleting item', 'error');
+    });
+}
+
+// Sell item function
+function sellItem(itemId) {
+    if (!itemId) {
+        showNotification('Invalid item ID', 'error');
+        return;
+    }
+    
+    // Get item data for selling
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'get_inventory_items',
+        nonce: warehouse_ajax.nonce
+    }, function(response) {
+        if (response.success && response.data.items) {
+            const item = response.data.items.find(i => i.id == itemId);
+            if (item) {
+                if (item.quantity <= 0) {
+                    showNotification('Cannot sell item - no stock available', 'error');
+                    return;
+                }
+                // Populate sell form with item data
+                populateSellForm(item);
+                openModal('sell-item-modal');
+            } else {
+                showNotification('Item not found', 'error');
+            }
+        } else {
+            showNotification('Error loading item data', 'error');
+        }
+    }).fail(function() {
+        showNotification('Network error loading item', 'error');
+    });
+}
+
+// Helper function to populate edit form
+function populateEditForm(item) {
+    const form = document.getElementById('edit-item-form');
+    if (!form) return;
+    
+    form.querySelector('[name="id"]').value = item.id;
+    form.querySelector('[name="name"]').value = item.name || '';
+    form.querySelector('[name="description"]').value = item.description || '';
+    
+    // Handle hierarchical category selection
+    const categorySelect = form.querySelector('#edit-category-select');
+    if (categorySelect && item.category_id) {
+        categorySelect.value = item.category_id;
+        
+        // If the value wasn't set (category might not exist anymore), highlight this
+        if (categorySelect.value != item.category_id) {
+            console.warn('Category ID', item.category_id, 'not found in dropdown');
+            showNotification('Warning: This item\'s category may have been deleted', 'warning');
+        }
+    }
+    
+    form.querySelector('[name="location_id"]').value = item.location_id || '';
+    form.querySelector('[name="quantity"]').value = item.quantity || 0;
+    form.querySelector('[name="min_stock_level"]').value = item.min_stock_level || 1;
+    form.querySelector('[name="purchase_price"]').value = item.purchase_price || '';
+    form.querySelector('[name="selling_price"]').value = item.selling_price || '';
+    form.querySelector('[name="total_lot_price"]').value = item.total_lot_price || '';
+    form.querySelector('[name="supplier"]').value = item.supplier || '';
+    form.querySelector('[name="tested_status"]').value = (item.tested_status === 'tested' || item.tested_status === '1') ? 'tested' : 'not_tested';
+}
+
+// Helper function to populate sell form
+function populateSellForm(item) {
+    const form = document.getElementById('sell-item-form');
+    if (!form) return;
+    
+    form.querySelector('[name="item_id"]').value = item.id;
+    form.querySelector('#sell-item-name').textContent = item.name;
+    form.querySelector('#sell-available-stock').textContent = item.quantity;
+    form.querySelector('[name="quantity"]').max = item.quantity;
+    form.querySelector('[name="unit_price"]').value = item.selling_price || '';
+}
+
+// Toggle tested status function
+function toggleTestedStatus(itemId, buttonElement) {
+    if (!itemId) {
+        showNotification('Invalid item ID', 'error');
+        return;
+    }
+    
+    // Get current status from button classes
+    const isTested = buttonElement.classList.contains('tested');
+    const newStatus = isTested ? 'not_tested' : 'tested';
+    
+    // Optimistically update UI
+    const icon = buttonElement.querySelector('i');
+    const text = buttonElement.querySelector('i').nextSibling;
+    
+    if (newStatus === 'tested') {
+        buttonElement.classList.remove('not-tested');
+        buttonElement.classList.add('tested');
+        icon.className = 'fas fa-check-circle';
+        buttonElement.innerHTML = '<i class="fas fa-check-circle"></i>Tested';
+    } else {
+        buttonElement.classList.remove('tested');
+        buttonElement.classList.add('not-tested');
+        icon.className = 'fas fa-clock';
+        buttonElement.innerHTML = '<i class="fas fa-clock"></i>Not Tested';
+    }
+    
+    // Send AJAX request to update backend
+    jQuery.post(warehouse_ajax.ajax_url, {
+        action: 'update_item_tested_status',
+        nonce: warehouse_ajax.nonce,
+        item_id: itemId,
+        tested_status: newStatus
+    }, function(response) {
+        if (response.success) {
+            showNotification(`Item marked as ${newStatus === 'tested' ? 'tested' : 'not tested'}`, 'success');
+        } else {
+            // Revert UI changes on error
+            if (newStatus === 'tested') {
+                buttonElement.classList.remove('tested');
+                buttonElement.classList.add('not-tested');
+                buttonElement.innerHTML = '<i class="fas fa-clock"></i>Not Tested';
+            } else {
+                buttonElement.classList.remove('not-tested');
+                buttonElement.classList.add('tested');
+                buttonElement.innerHTML = '<i class="fas fa-check-circle"></i>Tested';
+            }
+            showNotification('Error updating tested status: ' + (response.data || 'Unknown error'), 'error');
+        }
+    }).fail(function() {
+        // Revert UI changes on network error
+        if (newStatus === 'tested') {
+            buttonElement.classList.remove('tested');
+            buttonElement.classList.add('not-tested');
+            buttonElement.innerHTML = '<i class="fas fa-clock"></i>Not Tested';
+        } else {
+            buttonElement.classList.remove('not-tested');
+            buttonElement.classList.add('tested');
+            buttonElement.innerHTML = '<i class="fas fa-check-circle"></i>Tested';
+        }
+        showNotification('Network error updating tested status', 'error');
+    });
+}
+
+// Notification function
+function showNotification(message, type = 'info') {
+    // Remove existing notifications
+    const existing = document.querySelector('.notification-toast');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification-toast notification-${type}`;
+    notification.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-${type === 'info' ? 'info-circle' : type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i>
+            <span>${message}</span>
+        </div>
+        <button onclick="this.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 18px; padding: 0; margin-left: 10px;">&times;</button>
+    `;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+}
 </script>
 
 <style>
@@ -1353,85 +1004,366 @@ document.addEventListener('DOMContentLoaded', function() {
     border: 1px solid #e5e7eb;
 }
 
-/* Inventory Modal Styles */
-.inventory-modal-overlay {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    background: rgba(0,0,0,0.5) !important;
-    z-index: 999999 !important;
+/* Lot Price Section Styles */
+.lot-price-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
 }
 
-.inventory-modal {
-    position: absolute !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    background: white !important;
-    border-radius: 8px !important;
-    width: 600px !important;
-    max-width: 90% !important;
-    max-height: 90vh !important;
-    overflow-y: auto !important;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+.lot-price-container {
+    position: relative;
 }
 
-.inventory-modal-header {
-    padding: 20px !important;
-    border-bottom: 1px solid #eee !important;
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
+.lot-price-help {
+    display: block;
+    margin-top: 0.5rem;
+    color: #64748b;
+    font-style: italic;
 }
 
-.inventory-modal-header h3 {
-    margin: 0 !important;
-    font-size: 18px !important;
-    color: #333 !important;
+.lot-calculations {
+    margin-top: 1rem;
+    background: white;
+    border-radius: 6px;
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
 }
 
-.inventory-modal-body {
-    padding: 20px !important;
-    max-height: 60vh !important;
-    overflow-y: auto !important;
+.calc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f1f5f9;
 }
 
-.inventory-modal-footer {
-    padding: 20px !important;
-    border-top: 1px solid #eee !important;
-    text-align: right !important;
+.calc-row:last-child {
+    border-bottom: none;
 }
 
-/* Lot price display styling */
+.calc-row.total-row {
+    font-weight: 600;
+    border-top: 2px solid #e2e8f0;
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    color: #1e293b;
+}
+
+.calc-label {
+    color: #475569;
+}
+
+.calc-value {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.total-row .calc-value {
+    color: #059669;
+    font-size: 1.1em;
+}
+
+/* Price label base styles */
+.price-label {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-right: 0.5rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+/* Cost price display - reddish/orange theme */
+.price-label.cost-price {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fde68a;
+}
+
+.price-label.cost-price:hover {
+    background: #fde68a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(146, 64, 14, 0.15);
+}
+
+/* Sell price display - blue/teal theme */
+.price-label.sell-price {
+    background: #ecfeff;
+    color: #0891b2;
+    border-color: #a5f3fc;
+}
+
+.price-label.sell-price:hover {
+    background: #cffafe;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(8, 145, 178, 0.15);
+}
+
+/* Lot price display - green theme (existing) */
 .price-label.lot-price {
-    background: #fef3c7 !important;
-    color: #d97706 !important;
-    border: 1px solid #f59e0b !important;
-    padding: 0.25rem 0.5rem !important;
-    border-radius: 4px !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
+    background: #f0fdf4;
+    color: #059669;
+    border-color: #bbf7d0;
 }
 
-/* Tested status badge styling */
+.price-label.lot-price:hover {
+    background: #dcfce7;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.15);
+}
+
+/* Item pricing container */
+.item-pricing {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Notification styles */
+.notification-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000000;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 400px;
+    font-size: 14px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+.notification-info {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.notification-success {
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.notification-error {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+/* Improved inventory card layout */
+.inventory-item {
+    position: relative;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.inventory-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #d1d5db;
+}
+
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 1rem;
+}
+
+.item-info {
+    flex: 1;
+    min-width: 0; /* Allows text to truncate if needed */
+}
+
+.item-name {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1.3;
+    word-wrap: break-word;
+}
+
+.item-id {
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.item-status-badges {
+    margin-top: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
 .tested-badge {
-    padding: 0.25rem 0.5rem !important;
-    border-radius: 4px !important;
-    font-weight: 600 !important;
-    font-size: 0.875rem !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
 }
 
-.tested-yes {
-    background: #dcfce7 !important;
-    color: #166534 !important;
-    border: 1px solid #22c55e !important;
+.tested-badge.tested {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
 }
 
-.tested-no {
-    background: #fef2f2 !important;
-    color: #dc2626 !important;
-    border: 1px solid #ef4444 !important;
+.tested-badge.tested:hover {
+    background: #bbf7d0;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(22, 101, 52, 0.15);
+}
+
+.tested-badge.not-tested {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.tested-badge.not-tested:hover {
+    background: #fde68a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(146, 64, 14, 0.15);
+}
+
+.tested-badge i {
+    font-size: 0.875rem;
+}
+
+.item-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    align-items: flex-start;
+}
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.btn-icon:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.edit-btn:hover {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #3b82f6;
+}
+
+.sell-btn:hover {
+    background: #f0fdf4;
+    border-color: #059669;
+    color: #059669;
+}
+
+.delete-btn:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+/* Ensure content below header has proper spacing */
+.inventory-item .item-details {
+    margin-top: 1rem;
+}
+
+/* Make sure the grid layout is responsive */
+.inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+    .inventory-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .item-header {
+        gap: 0.75rem;
+    }
+    
+    .item-actions {
+        gap: 0.25rem;
+    }
+    
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+ }
+ 
+ .notification-warning {
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fed7aa;
+}
+
+/* Highlight animation */
+@keyframes highlight-flash {
+    0% { 
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+        transform: scale(1);
+    }
+    50% { 
+        box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+        transform: scale(1.02);
+    }
+    100% { 
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+        transform: scale(1);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
 </style> 

@@ -112,7 +112,7 @@ $total_sales = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wh_sales");
                     <button class="period-btn active" data-period="daily" onclick="switchProfitPeriod('daily')">Daily</button>
                     <button class="period-btn" data-period="monthly" onclick="switchProfitPeriod('monthly')">Monthly</button>
                 </div>
-                <input type="date" id="profit-date" value="<?php echo current_time('Y-m-d'); ?>" onchange="loadProfitData()">
+                <input type="date" id="profit-date" value="" onchange="saveDateAndLoadProfit()">
             </div>
             <div class="profit-display">
                 <div class="profit-amount" id="profit-amount">$0.00</div>
@@ -1103,6 +1103,9 @@ let currentProfitPeriod = 'daily';
 function switchProfitPeriod(period) {
     currentProfitPeriod = period;
     
+    // Save period to localStorage
+    localStorage.setItem('profit_period', period);
+    
     // Update button states
     document.querySelectorAll('.period-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -1116,6 +1119,19 @@ function switchProfitPeriod(period) {
         const currentDate = new Date(dateInput.value);
         dateInput.value = currentDate.getFullYear() + '-' + 
                          String(currentDate.getMonth() + 1).padStart(2, '0') + '-01';
+        // Save the updated date too
+        localStorage.setItem('profit_date', dateInput.value);
+    } else if (period === 'daily') {
+        // For daily, restore to today if we were on month view
+        const currentDate = new Date(dateInput.value);
+        const today = new Date();
+        
+        // If current date is the 1st of month and today is different, restore to today
+        if (currentDate.getDate() === 1 && currentDate.toDateString() !== today.toDateString()) {
+            const todayStr = today.toISOString().split('T')[0];
+            dateInput.value = todayStr;
+            localStorage.setItem('profit_date', todayStr);
+        }
     }
     
     loadProfitData();
@@ -1185,8 +1201,39 @@ function updateProfitDisplay(data) {
 
 // Load profit data on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Restore saved date and period from localStorage
+    const savedDate = localStorage.getItem('profit_date');
+    const savedPeriod = localStorage.getItem('profit_period');
+    
+    // Set date - use saved date or today's date as fallback
+    const dateInput = document.getElementById('profit-date');
+    if (savedDate) {
+        dateInput.value = savedDate;
+    } else {
+        // Use today's date as default and save it
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+        localStorage.setItem('profit_date', today);
+    }
+    
+    if (savedPeriod) {
+        currentProfitPeriod = savedPeriod;
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-period="${savedPeriod}"]`).classList.add('active');
+    }
+    
     loadProfitData();
 });
+
+// Save date and period to localStorage, then load data
+function saveDateAndLoadProfit() {
+    const date = document.getElementById('profit-date').value;
+    localStorage.setItem('profit_date', date);
+    localStorage.setItem('profit_period', currentProfitPeriod);
+    loadProfitData();
+}
 
 // Rebuild profit data function
 function rebuildProfitData() {

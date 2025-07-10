@@ -29,139 +29,159 @@ if ($tasks) {
             <button class="btn btn-outline" onclick="toggleHistoryPanel()">
                 <i class="fas fa-history"></i> History
             </button>
+            <button class="btn btn-outline" onclick="toggleTeamChatPanel()">
+                <i class="fas fa-comments"></i> Team Chat
+            </button>
             <button class="btn btn-primary" onclick="document.getElementById('add-task-modal').classList.remove('hidden'); console.log('Button clicked!');">
                 <i class="fas fa-plus"></i> Add Task
             </button>
         </div>
     </div>
 
-    <div class="kanban-container">
-        <!-- Kanban Board -->
-        <div class="kanban-board">
-            <!-- Pending Column -->
-            <div class="kanban-column" data-status="pending">
-                <div class="column-header">
-                    <div class="column-title">
-                        <i class="fas fa-clock"></i>
-                        <span>Pending</span>
-                        <span class="task-count"><?php echo count($grouped_tasks['pending']); ?></span>
-                    </div>
-                </div>
-                <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
-                    <?php foreach ($grouped_tasks['pending'] as $task): ?>
-                        <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
-                    <?php endforeach; ?>
-                    
-                    <?php if (empty($grouped_tasks['pending'])): ?>
-                        <div class="empty-column">
-                            <i class="fas fa-plus-circle"></i>
-                            <p>No pending tasks</p>
+    <div class="tasks-main-container">
+        <!-- Tasks Section -->
+        <div class="tasks-section">
+            <!-- Kanban Board -->
+            <div class="kanban-board">
+                <!-- Pending Column -->
+                <div class="kanban-column" data-status="pending">
+                    <div class="column-header">
+                        <div class="column-title">
+                            <i class="fas fa-clock"></i>
+                            <span>Pending</span>
+                            <span class="task-count"><?php echo count($grouped_tasks['pending']); ?></span>
                         </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- In Progress Column -->
-            <div class="kanban-column" data-status="in_progress">
-                <div class="column-header">
-                    <div class="column-title">
-                        <i class="fas fa-spinner"></i>
-                        <span>In Progress</span>
-                        <span class="task-count"><?php echo count($grouped_tasks['in_progress']); ?></span>
+                    </div>
+                    <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
+                        <?php foreach ($grouped_tasks['pending'] as $task): ?>
+                            <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
+                        <?php endforeach; ?>
+                        
+                        <?php if (empty($grouped_tasks['pending'])): ?>
+                            <div class="empty-column">
+                                <i class="fas fa-plus-circle"></i>
+                                <p>No pending tasks</p>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
-                    <?php foreach ($grouped_tasks['in_progress'] as $task): ?>
-                        <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
-                    <?php endforeach; ?>
-                    
-                    <?php if (empty($grouped_tasks['in_progress'])): ?>
-                        <div class="empty-column">
-                            <i class="fas fa-play-circle"></i>
-                            <p>No tasks in progress</p>
+
+                <!-- In Progress Column -->
+                <div class="kanban-column" data-status="in_progress">
+                    <div class="column-header">
+                        <div class="column-title">
+                            <i class="fas fa-spinner"></i>
+                            <span>In Progress</span>
+                            <span class="task-count"><?php echo count($grouped_tasks['in_progress']); ?></span>
                         </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- Completed Column -->
-            <div class="kanban-column" data-status="completed">
-                <div class="column-header">
-                    <div class="column-title">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Completed</span>
-                        <span class="task-count"><?php echo count($grouped_tasks['completed']); ?></span>
+                    </div>
+                    <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
+                        <?php foreach ($grouped_tasks['in_progress'] as $task): ?>
+                            <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
+                        <?php endforeach; ?>
+                        
+                        <?php if (empty($grouped_tasks['in_progress'])): ?>
+                            <div class="empty-column">
+                                <i class="fas fa-play-circle"></i>
+                                <p>No tasks in progress</p>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
-                    <?php foreach ($grouped_tasks['completed'] as $task): ?>
-                        <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
-                    <?php endforeach; ?>
-                    
-                    <?php if (empty($grouped_tasks['completed'])): ?>
-                        <div class="empty-column">
+
+                <!-- Completed Column -->
+                <div class="kanban-column" data-status="completed">
+                    <div class="column-header">
+                        <div class="column-title">
                             <i class="fas fa-check-circle"></i>
-                            <p>No completed tasks</p>
+                            <span>Completed</span>
+                            <span class="task-count"><?php echo count($grouped_tasks['completed']); ?></span>
                         </div>
-                    <?php endif; ?>
+                    </div>
+                    <div class="column-content" ondrop="drop(event)" ondragover="allowDrop(event)">
+                        <?php foreach ($grouped_tasks['completed'] as $task): ?>
+                            <?php include get_template_directory() . '/template-parts/task-card-template.php'; ?>
+                        <?php endforeach; ?>
+                        
+                        <?php if (empty($grouped_tasks['completed'])): ?>
+                            <div class="empty-column">
+                                <i class="fas fa-check-circle"></i>
+                                <p>No completed tasks</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- History Panel -->
-        <div id="history-panel" class="history-panel hidden">
-            <div class="history-header">
-                <h3><i class="fas fa-history"></i> Task History</h3>
-                <button class="btn-close" onclick="toggleHistoryPanel()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <div class="history-content">
-                <?php if ($task_history): ?>
-                    <?php foreach ($task_history as $history_item): ?>
-                        <div class="history-item">
-                            <div class="history-date">
-                                <i class="fas fa-calendar-check"></i>
-                                <?php echo date('M j, Y - g:i A', strtotime($history_item->completed_at)); ?>
-                            </div>
-                            
-                            <div class="history-task">
-                                <h4><?php echo esc_html($history_item->title); ?></h4>
-                                <p><?php echo esc_html($history_item->description); ?></p>
+        <!-- Sidebar Section -->
+        <div class="sidebar-section">
+
+            <!-- History Panel -->
+            <div id="history-panel" class="sidebar-panel hidden">
+                <div class="sidebar-content">
+                    <?php if ($task_history): ?>
+                        <?php foreach ($task_history as $history_item): ?>
+                            <div class="history-item">
+                                <div class="history-date">
+                                    <i class="fas fa-calendar-check"></i>
+                                    <?php echo date('M j, Y - g:i A', strtotime($history_item->completed_at)); ?>
+                                </div>
                                 
-                                <div class="history-meta">
-                                    <span class="priority priority-<?php echo esc_attr($history_item->priority); ?>">
-                                        <?php echo esc_html(ucfirst($history_item->priority)); ?>
-                                    </span>
+                                <div class="history-task">
+                                    <h4><?php echo esc_html($history_item->title); ?></h4>
+                                    <p><?php echo esc_html($history_item->description); ?></p>
                                     
-                                    <span class="assignee">
-                                        <i class="fas fa-user"></i>
-                                        <?php echo esc_html($history_item->assigned_to_name ?: 'Unassigned'); ?>
-                                    </span>
-                                    
-                                    <?php if ($history_item->created_at && $history_item->completed_at): ?>
-                                    <span class="duration">
-                                        <i class="fas fa-clock"></i>
-                                        <?php 
-                                        $created = new DateTime($history_item->created_at);
-                                        $completed = new DateTime($history_item->completed_at);
-                                        $interval = $created->diff($completed);
-                                        echo $interval->format('%a days %h hours');
-                                        ?>
-                                    </span>
-                                    <?php endif; ?>
+                                    <div class="history-meta">
+                                        <span class="priority priority-<?php echo esc_attr($history_item->priority); ?>">
+                                            <?php echo esc_html(ucfirst($history_item->priority)); ?>
+                                        </span>
+                                        
+                                        <span class="assignee">
+                                            <i class="fas fa-user"></i>
+                                            <?php echo esc_html(isset($history_item->assigned_to_name) ? $history_item->assigned_to_name : 'Unassigned'); ?>
+                                        </span>
+                                        
+                                        <?php if ($history_item->created_at && $history_item->completed_at): ?>
+                                        <span class="duration">
+                                            <i class="fas fa-clock"></i>
+                                            <?php 
+                                            $created = new DateTime($history_item->created_at);
+                                            $completed = new DateTime($history_item->completed_at);
+                                            $interval = $created->diff($completed);
+                                            echo $interval->format('%a days %h hours');
+                                            ?>
+                                        </span>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
                             </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-history">
+                            <i class="fas fa-archive"></i>
+                            <h4>No completed tasks yet</h4>
+                            <p>Completed tasks will appear here with timestamps.</p>
+                            <p class="retention-notice"><i class="fas fa-clock"></i> Task history is kept for 6 months</p>
                         </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="empty-history">
-                        <i class="fas fa-archive" style="font-size: 3rem; color: #d1d5db; margin-bottom: 1rem;"></i>
-                        <h4>No completed tasks yet</h4>
-                        <p>Completed tasks will appear here with timestamps.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Team Chat Panel -->
+            <div id="team-chat-panel" class="sidebar-panel">
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Chat messages will be loaded here -->
+                </div>
+                
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chat-message-input" placeholder="Type your message..." class="chat-input">
+                        <button onclick="sendChatMessage()" class="btn btn-primary chat-send-btn">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
                     </div>
-                <?php endif; ?>
+                </div>
             </div>
         </div>
     </div>
@@ -262,17 +282,57 @@ if ($tasks) {
     gap: 1rem;
 }
 
-.kanban-container {
+/* Main Layout Styles */
+.tasks-main-container {
     display: flex;
-    gap: 2rem;
-    height: calc(100vh - 200px);
+    height: calc(100vh - 120px);
+    background: #f8fafc;
+    gap: 0;
+}
+
+.tasks-section {
+    flex: 1;
+    padding: 1.5rem;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.sidebar-section {
+    width: 400px;
+    background: white;
+    border-left: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    height: 520px; /* Adjusted height without header */
+    max-height: 520px;
+    overflow: hidden;
+}
+
+
+
+/* Sidebar Panels */
+.sidebar-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-panel.hidden {
+    display: none;
+}
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
 }
 
 .kanban-board {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 1.5rem;
-    flex: 1;
+    height: 100%;
 }
 
 .kanban-column {
@@ -443,56 +503,7 @@ if ($tasks) {
     margin-bottom: 0.5rem;
 }
 
-/* History Panel */
-.history-panel {
-    width: 350px;
-    background: white;
-    border-radius: 12px;
-    border: 1px solid #e5e7eb;
-    display: flex;
-    flex-direction: column;
-    transition: transform 0.3s ease;
-}
 
-.history-panel.hidden {
-    transform: translateX(100%);
-    opacity: 0;
-    pointer-events: none;
-}
-
-.history-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-.history-header h3 {
-    margin: 0;
-    color: #111827;
-    font-size: 1.1rem;
-}
-
-.btn-close {
-    background: none;
-    border: none;
-    color: #6b7280;
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 4px;
-    transition: background 0.2s;
-}
-
-.btn-close:hover {
-    background: #f3f4f6;
-}
-
-.history-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-}
 
 .history-item {
     padding: 1rem;
@@ -550,15 +561,57 @@ if ($tasks) {
 .history-meta .priority-high { background: #fee2e2; color: #991b1b; }
 .history-meta .priority-urgent { background: #fecaca; color: #7f1d1d; }
 
+.history-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    margin-right: 1rem;
+}
+
+.priority {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.priority-low {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.priority-medium {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.priority-high {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
 .empty-history {
     text-align: center;
-    padding: 3rem 1rem;
-    color: #9ca3af;
+    padding: 3rem 2rem;
+    color: #6b7280;
+}
+
+.empty-history i {
+    font-size: 3rem;
+    color: #d1d5db;
+    margin-bottom: 1rem;
+    display: block;
 }
 
 .empty-history h4 {
     margin: 0 0 0.5rem 0;
-    color: #6b7280;
+    color: #374151;
+}
+
+.empty-history p {
+    margin: 0;
+    font-size: 0.9rem;
 }
 
 /* Modal Styles */
@@ -738,28 +791,37 @@ textarea.form-input {
 
 /* Responsive */
 @media (max-width: 1024px) {
-    .kanban-container {
+    .tasks-main-container {
         flex-direction: column;
         height: auto;
+    }
+    
+    .tasks-section {
+        height: 60vh;
+        padding: 1rem;
+    }
+    
+    .sidebar-section {
+        width: 100%;
+        height: 300px; /* Reduced height without sidebar header */
+        border-left: none;
+        border-top: 1px solid #e5e7eb;
+        max-height: 300px;
+    }
+    
+    .chat-messages {
+        height: 220px; /* More space for chat on mobile */
+        max-height: 220px;
     }
     
     .kanban-board {
         grid-template-columns: 1fr;
         gap: 1rem;
+        height: auto;
     }
     
     .kanban-column {
         min-height: 300px;
-    }
-    
-    .history-panel {
-        width: 100%;
-        order: -1;
-        max-height: 300px;
-    }
-    
-    .history-panel.hidden {
-        transform: translateY(-100%);
     }
     
     .modal-overlay {
@@ -782,6 +844,128 @@ textarea.form-input {
         padding-left: 1.5rem;
         padding-right: 1.5rem;
     }
+}
+
+/* Team Chat Panel Styles */
+.chat-messages {
+    overflow-y: auto;
+    padding: 1rem;
+    height: 440px; /* Same height as before */
+    max-height: 440px;
+}
+
+.chat-message {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    position: relative;
+}
+
+.chat-message.own {
+    background: #e0f2fe;
+    margin-left: 2rem;
+    text-align: right;
+}
+
+.chat-message.other {
+    background: #f8fafc;
+    margin-right: 2rem;
+}
+
+.chat-message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.chat-message.own .chat-message-header {
+    flex-direction: row-reverse;
+}
+
+.chat-message-author {
+    font-weight: 600;
+    color: #374151;
+}
+
+.chat-message-time {
+    font-size: 0.7rem;
+}
+
+.chat-message-content {
+    color: #111827;
+    line-height: 1.4;
+}
+
+.chat-input-container {
+    padding: 1rem;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+    height: 80px; /* Fixed height for input area */
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+
+.chat-input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.chat-input:focus {
+    outline: none;
+    border-color: #007cba;
+    box-shadow: 0 0 0 3px rgba(0, 124, 186, 0.1);
+}
+
+.chat-send-btn {
+    padding: 0.75rem 1rem !important;
+    border-radius: 6px !important;
+}
+
+.empty-chat {
+    text-align: center;
+    padding: 3rem 2rem;
+    color: #6b7280;
+}
+
+.empty-chat i {
+    font-size: 3rem;
+    color: #d1d5db;
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.empty-chat h4 {
+    margin: 0 0 0.5rem 0;
+    color: #374151;
+}
+
+.empty-chat p {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.retention-notice {
+    color: #9ca3af !important;
+    font-size: 0.8rem !important;
+    margin-top: 1rem !important;
+    padding-top: 1rem !important;
+    border-top: 1px solid #e5e7eb !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
 }
 </style>
 
@@ -835,15 +1019,15 @@ function drop(ev) {
 
 function updateTaskStatus(taskId, newStatus) {
     console.log('Updating task', taskId, 'to status', newStatus);
-    console.log('Nonce available:', warehouseAjax.nonce);
+    console.log('Nonce available:', warehouse_ajax.nonce);
     
     const formData = new FormData();
     formData.append('action', 'update_task_status');
     formData.append('task_id', taskId);
     formData.append('status', newStatus);
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
@@ -869,9 +1053,9 @@ function moveTaskToHistory(taskId) {
     const formData = new FormData();
     formData.append('action', 'move_task_to_history');
     formData.append('task_id', taskId);
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
@@ -925,84 +1109,295 @@ function updateTaskCounts() {
     });
 }
 
-function toggleHistoryPanel() {
-    const panel = document.getElementById('history-panel');
-    panel.classList.toggle('hidden');
+function showHistoryPanel() {
+    const historyPanel = document.getElementById('history-panel');
+    const chatPanel = document.getElementById('team-chat-panel');
     
-    // Refresh history when opening
-    if (!panel.classList.contains('hidden')) {
-        refreshHistoryPanel();
-    }
+    // Switch panels
+    historyPanel.classList.remove('hidden');
+    chatPanel.classList.add('hidden');
+    
+    // Refresh history when showing
+    refreshHistoryPanel();
 }
 
-function refreshHistoryPanel() {
+function showChatPanel() {
+    const historyPanel = document.getElementById('history-panel');
+    const chatPanel = document.getElementById('team-chat-panel');
+    
+    // Switch panels
+    chatPanel.classList.remove('hidden');
+    historyPanel.classList.add('hidden');
+    
+    // Load chat messages when showing
+    loadChatMessages();
+}
+
+// Keep backward compatibility for header buttons
+function toggleHistoryPanel() {
+    showHistoryPanel();
+}
+
+function toggleTeamChatPanel() {
+    showChatPanel();
+}
+
+function loadChatMessages() {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+    
+    chatMessages.innerHTML = '<div style="text-align: center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    
     const formData = new FormData();
-    formData.append('action', 'get_task_history');
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('action', 'get_chat_messages');
+    formData.append('nonce', warehouse_ajax.nonce);
     
-    const historyContent = document.querySelector('.history-content');
-    if (historyContent) {
-        historyContent.innerHTML = '<div style="text-align: center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-    }
-    
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
     .then(response => response.json())
     .then(data => {
+        if (data.success && data.data) {
+            displayChatMessages(data.data);
+        } else {
+            chatMessages.innerHTML = `
+                <div class="empty-chat">
+                    <i class="fas fa-comments"></i>
+                    <h4>No messages yet</h4>
+                    <p>Start a conversation with your team!</p>
+                    <p class="retention-notice"><i class="fas fa-clock"></i> Chat messages are kept for 6 months</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading chat messages:', error);
+        chatMessages.innerHTML = `
+            <div class="empty-chat">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h4>Failed to load messages</h4>
+                <p>Please try again later.</p>
+            </div>
+        `;
+    });
+}
+
+function displayChatMessages(messages) {
+    const chatMessages = document.getElementById('chat-messages');
+    const currentUserId = warehouse_ajax.current_user_id;
+    
+    if (!messages || messages.length === 0) {
+        chatMessages.innerHTML = `
+            <div class="empty-chat">
+                <i class="fas fa-comments"></i>
+                <h4>No messages yet</h4>
+                <p>Start a conversation with your team!</p>
+                <p class="retention-notice"><i class="fas fa-clock"></i> Chat messages are kept for 6 months</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let messagesHtml = '';
+    messages.forEach(message => {
+        const isOwn = message.user_id == currentUserId;
+        const messageClass = isOwn ? 'own' : 'other';
+        
+        messagesHtml += `
+            <div class="chat-message ${messageClass}">
+                <div class="chat-message-header">
+                    <span class="chat-message-author">${message.user_name || 'Unknown User'}</span>
+                    <span class="chat-message-time">${formatMessageTime(message.created_at)}</span>
+                </div>
+                <div class="chat-message-content">${escapeHtml(message.message)}</div>
+            </div>
+        `;
+    });
+    
+    chatMessages.innerHTML = messagesHtml;
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function sendChatMessage() {
+    const messageInput = document.getElementById('chat-message-input');
+    const message = messageInput.value.trim();
+    
+    if (!message) return;
+    
+    const formData = new FormData();
+    formData.append('action', 'send_chat_message');
+    formData.append('message', message);
+    formData.append('nonce', warehouse_ajax.nonce);
+    
+    // Disable input while sending
+    messageInput.disabled = true;
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            messageInput.value = '';
+            loadChatMessages(); // Reload messages
+        } else {
+            showNotification('Failed to send message', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error sending message:', error);
+        showNotification('Error sending message', 'error');
+    })
+    .finally(() => {
+        messageInput.disabled = false;
+        messageInput.focus();
+    });
+}
+
+function formatMessageTime(timestamp) {
+    try {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        
+        return date.toLocaleDateString();
+    } catch (e) {
+        return timestamp;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function refreshHistoryPanel() {
+    const formData = new FormData();
+    formData.append('action', 'get_task_history');
+    formData.append('nonce', warehouse_ajax.nonce);
+    
+    // Find the history content within the history panel
+    const historyPanel = document.getElementById('history-panel');
+    const historyContent = historyPanel ? historyPanel.querySelector('.sidebar-content') : null;
+    
+    if (historyContent) {
+        historyContent.innerHTML = '<div style="text-align: center; padding: 2rem;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    }
+    
+    fetch(warehouse_ajax.ajax_url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('History response:', data);
+        
         if (data.success && historyContent) {
-            // Regenerate history HTML
             let historyHtml = '';
+            
             if (data.data && data.data.length > 0) {
                 data.data.forEach(item => {
-                    const completedDate = new Date(item.completed_at);
-                    const createdDate = new Date(item.created_at);
-                    const timeDiff = Math.abs(completedDate - createdDate);
-                    const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-                    
-                    historyHtml += `
-                        <div class="history-item">
-                            <div class="history-date">
-                                <i class="fas fa-calendar-check"></i>
-                                ${completedDate.toLocaleDateString()} - ${completedDate.toLocaleTimeString()}
-                            </div>
-                            <div class="history-task">
-                                <h4>${item.title}</h4>
-                                <p>${item.description || ''}</p>
-                                <div class="history-meta">
-                                    <span class="priority priority-${item.priority}">
-                                        ${item.priority.toUpperCase()}
-                                    </span>
-                                    <span class="assignee">
-                                        <i class="fas fa-user"></i>
-                                        ${item.assigned_to_name || 'Unassigned'}
-                                    </span>
-                                    <span class="duration">
-                                        <i class="fas fa-clock"></i>
-                                        ${daysDiff} days
-                                    </span>
+                    try {
+                        // Handle date formatting safely
+                        let completedDateStr = 'Unknown date';
+                        let daysDiff = 0;
+                        
+                        if (item.completed_at) {
+                            const completedDate = new Date(item.completed_at);
+                            if (!isNaN(completedDate.getTime())) {
+                                completedDateStr = completedDate.toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                });
+                                
+                                if (item.created_at) {
+                                    const createdDate = new Date(item.created_at);
+                                    if (!isNaN(createdDate.getTime())) {
+                                        const timeDiff = Math.abs(completedDate - createdDate);
+                                        daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+                                    }
+                                }
+                            }
+                        }
+                        
+                        historyHtml += `
+                            <div class="history-item">
+                                <div class="history-date">
+                                    <i class="fas fa-calendar-check"></i>
+                                    ${completedDateStr}
+                                </div>
+                                <div class="history-task">
+                                    <h4>${item.title || 'Unknown Task'}</h4>
+                                    <p>${item.description || ''}</p>
+                                    <div class="history-meta">
+                                        <span class="priority priority-${item.priority || 'medium'}">
+                                            ${(item.priority || 'medium').toUpperCase()}
+                                        </span>
+                                        <span class="assignee">
+                                            <i class="fas fa-user"></i>
+                                            ${item.assigned_to_name || 'System'}
+                                        </span>
+                                        <span class="duration">
+                                            <i class="fas fa-clock"></i>
+                                            ${daysDiff > 0 ? daysDiff + ' days' : 'Same day'}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    } catch (itemError) {
+                        console.error('Error processing history item:', itemError, item);
+                    }
                 });
             } else {
                 historyHtml = `
-                    <div class="empty-history">
+                    <div class="empty-history" style="text-align: center; padding: 2rem; color: #6b7280;">
                         <i class="fas fa-archive" style="font-size: 3rem; color: #d1d5db; margin-bottom: 1rem;"></i>
                         <h4>No completed tasks yet</h4>
                         <p>Completed tasks will appear here with timestamps.</p>
+                        <p class="retention-notice"><i class="fas fa-clock"></i> Task history is kept for 6 months</p>
                     </div>
                 `;
             }
+            
             historyContent.innerHTML = historyHtml;
+        } else {
+            console.error('History request failed:', data);
+            if (historyContent) {
+                historyContent.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: #ef4444;">
+                        <i class="fas fa-exclamation-triangle"></i><br>
+                        Failed to load history: ${data.data || 'Unknown error'}
+                    </div>
+                `;
+            }
         }
     })
     .catch(error => {
         console.error('Error refreshing history:', error);
         if (historyContent) {
-            historyContent.innerHTML = '<div style="text-align: center; padding: 2rem; color: #ef4444;">Failed to load history</div>';
+            historyContent.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle"></i><br>
+                    Failed to load history
+                </div>
+            `;
         }
     });
 }
@@ -1024,7 +1419,7 @@ window.submitAddTask = function() {
     
     const formData = new FormData(form);
     formData.append('action', 'add_task');
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     
     // Disable button to prevent double submission
     const submitBtn = document.querySelector('#add-task-modal button[onclick*="submitAddTask"]');
@@ -1033,7 +1428,7 @@ window.submitAddTask = function() {
         submitBtn.innerHTML = 'Adding...';
         submitBtn.disabled = true;
         
-        fetch(warehouseAjax.ajax_url, {
+        fetch(warehouse_ajax.ajax_url, {
             method: 'POST',
             body: formData
         })
@@ -1072,9 +1467,9 @@ function deleteTask(taskId) {
     const formData = new FormData();
     formData.append('action', 'delete_task');
     formData.append('task_id', taskId);
-    formData.append('nonce', warehouseAjax.nonce);
+    formData.append('nonce', warehouse_ajax.nonce);
     
-    fetch(warehouseAjax.ajax_url, {
+    fetch(warehouse_ajax.ajax_url, {
         method: 'POST',
         body: formData
     })
@@ -1260,13 +1655,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData(form);
             formData.append('action', 'add_task');
-            formData.append('nonce', warehouseAjax.nonce);
+            formData.append('nonce', warehouse_ajax.nonce);
             
             // Disable button
             submitButton.innerHTML = 'Adding...';
             submitButton.disabled = true;
             
-            fetch(warehouseAjax.ajax_url, {
+            fetch(warehouse_ajax.ajax_url, {
                 method: 'POST',
                 body: formData
             })
@@ -1300,6 +1695,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     updateTaskCounts();
+    
+    // Initialize sidebar with chat as default
+    showChatPanel();
+    
+    // Add Enter key listener for chat input
+    const chatInput = document.getElementById('chat-message-input');
+    if (chatInput) {
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+    }
 });
 
 // Add CSS for notification animation

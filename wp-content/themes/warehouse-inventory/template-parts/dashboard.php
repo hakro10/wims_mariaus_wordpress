@@ -1,430 +1,422 @@
 <?php
-/**
- * Dashboard Template Part
- */
-
+// Get dashboard stats using the theme function
 $stats = get_dashboard_stats();
-?>
 
+// Get additional data for charts
+global $wpdb;
+
+// Get categories with item counts for chart
+$categories_data = $wpdb->get_results("
+    SELECT c.name, COUNT(i.id) as item_count
+    FROM {$wpdb->prefix}wh_categories c
+    LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON c.id = i.category_id
+    WHERE c.is_active = 1
+    GROUP BY c.id, c.name
+    ORDER BY item_count DESC
+    LIMIT 10
+");
+
+// Get locations with item counts for chart
+$locations_data = $wpdb->get_results("
+    SELECT l.name, COUNT(i.id) as item_count
+    FROM {$wpdb->prefix}wh_locations l
+    LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON l.id = i.location_id
+    GROUP BY l.id, l.name
+    ORDER BY item_count DESC
+    LIMIT 8
+");
+
+// Get recent sales data for trend chart (last 7 days)
+$sales_trend = $wpdb->get_results("
+    SELECT DATE(sale_date) as date, SUM(total_amount) as total_sales, COUNT(*) as sales_count
+    FROM {$wpdb->prefix}wh_sales
+    WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    GROUP BY DATE(sale_date)
+    ORDER BY DATE(sale_date) ASC
+");
+
+// Get top selling items (last 30 days)
+$top_items = $wpdb->get_results("
+    SELECT i.name, SUM(s.quantity) as total_sold, SUM(s.total_amount) as total_revenue
+    FROM {$wpdb->prefix}wh_sales s
+    JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+    WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    GROUP BY s.item_id, i.name
+    ORDER BY total_sold DESC
+    LIMIT 5
+");
+?>
 <div class="dashboard-content">
-    <!-- Dashboard Stats -->
+    <div class="page-header">
+        <h1>📊 Dashboard</h1>
+        <p>Overview of your warehouse operations</p>
+    </div>
+    
     <div class="dashboard-stats">
-        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'all')" title="View all inventory items">
-            <div class="stat-icon blue">
-                <i class="fas fa-boxes"></i>
-            </div>
-            <div class="stat-value"><?php echo number_format($stats['total_items']); ?></div>
-            <div class="stat-label">Total Items</div>
-        </div>
-        
-        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'in-stock')" title="View items in stock">
-            <div class="stat-icon green">
-                <i class="fas fa-check-circle"></i>
-            </div>
-            <div class="stat-value"><?php echo number_format($stats['in_stock']); ?></div>
-            <div class="stat-label">In Stock</div>
-        </div>
-        
-        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'low-stock')" title="View low stock items">
-            <div class="stat-icon yellow">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="stat-value"><?php echo number_format($stats['low_stock']); ?></div>
-            <div class="stat-label">Low Stock</div>
-        </div>
-        
-        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'out-of-stock')" title="View out of stock items">
-            <div class="stat-icon red">
-                <i class="fas fa-times-circle"></i>
-            </div>
-            <div class="stat-value"><?php echo number_format($stats['out_of_stock']); ?></div>
-            <div class="stat-label">Out of Stock</div>
-        </div>
-        
-        <div class="stat-card clickable" onclick="navigateWithFilter('inventory', 'all')" title="View all items with total value">
+        <div class="stat-card">
             <div class="stat-icon blue">
                 <i class="fas fa-dollar-sign"></i>
             </div>
-            <div class="stat-value">$<?php echo number_format($stats['total_value'], 2); ?></div>
-            <div class="stat-label">Total Value</div>
+            <div class="stat-value">$<?php echo isset($stats['total_value']) ? esc_html(number_format($stats['total_value'], 2)) : '0.00'; ?></div>
+            <div class="stat-label">Total Inventory Value</div>
         </div>
         
-        <div class="stat-card clickable" onclick="navigateToTab('sales')" title="View today's sales">
+        <div class="stat-card">
             <div class="stat-icon green">
-                <i class="fas fa-shopping-cart"></i>
+                <i class="fas fa-check-circle"></i>
             </div>
-            <div class="stat-value">$<?php echo number_format($stats['sales_today'], 2); ?></div>
-            <div class="stat-label">Sales Today</div>
+            <div class="stat-value"><?php echo isset($stats['in_stock']) ? esc_html($stats['in_stock']) : '0'; ?></div>
+            <div class="stat-label">Items In Stock</div>
         </div>
         
-        <div class="stat-card clickable" onclick="navigateToTab('tasks')" title="View pending tasks">
+        <div class="stat-card">
             <div class="stat-icon yellow">
-                <i class="fas fa-tasks"></i>
+                <i class="fas fa-exclamation-triangle"></i>
             </div>
-            <div class="stat-value"><?php echo number_format($stats['pending_tasks']); ?></div>
-            <div class="stat-label">Pending Tasks</div>
+            <div class="stat-value"><?php echo isset($stats['low_stock']) ? esc_html($stats['low_stock']) : '0'; ?></div>
+            <div class="stat-label">Low Stock Items</div>
         </div>
         
-        <div class="stat-card clickable" onclick="navigateToTab('categories')" title="Manage categories">
-            <div class="stat-icon blue">
-                <i class="fas fa-tags"></i>
+        <div class="stat-card">
+            <div class="stat-icon red">
+                <i class="fas fa-times-circle"></i>
             </div>
-            <div class="stat-value"><?php echo number_format($stats['categories_count']); ?></div>
-            <div class="stat-label">Categories</div>
+            <div class="stat-value"><?php echo isset($stats['out_of_stock']) ? esc_html($stats['out_of_stock']) : '0'; ?></div>
+            <div class="stat-label">Out of Stock Items</div>
         </div>
     </div>
-
-    <!-- Quick Actions -->
-    <div class="quick-actions">
-        <h2>Quick Actions</h2>
-        <div class="action-buttons">
-            <button class="btn btn-primary" onclick="navigateToTab('inventory')">
-                <i class="fas fa-plus"></i> Add New Item
-            </button>
-            <button class="btn btn-secondary" onclick="navigateToTab('categories')">
-                <i class="fas fa-tag"></i> Add Category
-            </button>
-            <button class="btn btn-secondary" onclick="navigateToTab('locations')">
-                <i class="fas fa-map-marker-alt"></i> Add Location
-            </button>
-            <button class="btn btn-secondary" onclick="navigateToTab('inventory')">
-                <i class="fas fa-eye"></i> View All Items
-            </button>
-        </div>
-    </div>
-
-    <!-- Recent Items -->
-    <div class="recent-items">
-        <h2>Recently Added Items</h2>
-        <?php
-        global $wpdb;
-        $recent_items = $wpdb->get_results("
-            SELECT i.*, c.name as category_name, l.name as location_name 
-            FROM {$wpdb->prefix}wh_inventory_items i
-            LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
-            LEFT JOIN {$wpdb->prefix}wh_locations l ON i.location_id = l.id
-            ORDER BY i.created_at DESC 
-            LIMIT 6
-        ");
-        
-        if ($recent_items): ?>
-            <div class="inventory-grid">
-                <?php foreach ($recent_items as $item): ?>
-                    <div class="inventory-item">
-                        <div class="item-header">
-                            <div class="item-info">
-                                <h3><?php echo esc_html($item->name); ?></h3>
-                                <div class="item-id">ID: <?php echo esc_html($item->internal_id); ?></div>
-                            </div>
-                            <div class="item-actions">
-                                <button class="btn-icon" onclick="editItem(<?php echo $item->id; ?>)" title="Edit">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button class="btn-icon" onclick="sellItem(<?php echo $item->id; ?>)" title="Sell">
-                                    <i class="fas fa-shopping-cart"></i>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="item-details">
-                            <div class="detail-item">
-                                <div class="detail-label">Quantity</div>
-                                <div class="detail-value"><?php echo number_format($item->quantity); ?></div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Status</div>
-                                <div class="detail-value">
-                                    <span class="status-badge status-<?php echo esc_attr($item->status); ?>">
-                                        <?php echo esc_html(ucwords(str_replace('-', ' ', $item->status))); ?>
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Category</div>
-                                <div class="detail-value"><?php echo esc_html($item->category_name ?: 'Uncategorized'); ?></div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Location</div>
-                                <div class="detail-value"><?php echo esc_html($item->location_name ?: 'No location'); ?></div>
-                            </div>
-                        </div>
-                        
-                        <?php if ($item->purchase_price || $item->selling_price): ?>
-                        <div class="item-pricing">
-                            <?php if ($item->purchase_price): ?>
-                                <span class="price-label">Cost: $<?php echo number_format($item->purchase_price, 2); ?></span>
-                            <?php endif; ?>
-                            <?php if ($item->selling_price): ?>
-                                <span class="price-label">Sell: $<?php echo number_format($item->selling_price, 2); ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php else: ?>
-            <div class="empty-state">
-                <i class="fas fa-boxes" style="font-size: 4rem; color: #d1d5db; margin-bottom: 1rem;"></i>
-                <h3>No items yet</h3>
-                <p>Start by adding your first inventory item.</p>
-                <button class="btn btn-primary" onclick="navigateToTab('inventory')">
-                    <i class="fas fa-plus"></i> Add First Item
-                </button>
-            </div>
-        <?php endif; ?>
-    </div>
-
-    <!-- Low Stock Alerts -->
-    <?php
-    $low_stock_items = $wpdb->get_results("
-        SELECT i.*, c.name as category_name 
-        FROM {$wpdb->prefix}wh_inventory_items i
-        LEFT JOIN {$wpdb->prefix}wh_categories c ON i.category_id = c.id
-        WHERE i.quantity <= i.min_stock_level AND i.quantity > 0
-        ORDER BY i.quantity ASC
-        LIMIT 5
-    ");
     
-    if ($low_stock_items): ?>
-        <div class="low-stock-alerts">
-            <h2>⚠️ Low Stock Alerts</h2>
-            <div class="alert-list">
-                <?php foreach ($low_stock_items as $item): ?>
-                    <div class="alert-item" onclick="viewItemDetails(<?php echo $item->id; ?>)" title="Click to search for this item">
-                        <div class="alert-info">
-                            <strong><?php echo esc_html($item->name); ?></strong>
-                            <span class="item-category"><?php echo esc_html($item->category_name ?: 'Uncategorized'); ?></span>
-                        </div>
-                        <div class="alert-quantity">
-                            <span class="current-stock"><?php echo $item->quantity; ?></span>
-                            <span class="min-level">/ <?php echo $item->min_stock_level; ?> min</span>
-                        </div>
-                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); restockItem(<?php echo $item->id; ?>)" title="Restock this item">
-                            Restock
-                        </button>
-                    </div>
-                <?php endforeach; ?>
+    <!-- Charts Section -->
+    <div class="dashboard-charts">
+        <div class="chart-row">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>📈 Stock Status Distribution</h3>
+                    <p>Current inventory status overview</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stockStatusChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>🛍️ Sales Trend (Last 7 Days)</h3>
+                    <p>Daily sales performance</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="salesTrendChart"></canvas>
+                </div>
             </div>
         </div>
-    <?php endif; ?>
+        
+        <div class="chart-row">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>📦 Items by Category</h3>
+                    <p>Distribution of inventory by category</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="categoriesChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>🏢 Items by Location</h3>
+                    <p>Inventory distribution across locations</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="locationsChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-row">
+            <div class="chart-card full-width">
+                <div class="chart-header">
+                    <h3>🔥 Top Selling Items (Last 30 Days)</h3>
+                    <p>Best performing products</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="topItemsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Dashboard Charts JavaScript
+jQuery(document).ready(function($) {
+    // Stock Status Chart (Donut)
+    const stockCtx = document.getElementById('stockStatusChart').getContext('2d');
+    new Chart(stockCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['In Stock', 'Low Stock', 'Out of Stock'],
+            datasets: [{
+                data: [
+                    <?php echo isset($stats['in_stock']) ? $stats['in_stock'] : 0; ?>,
+                    <?php echo isset($stats['low_stock']) ? $stats['low_stock'] : 0; ?>,
+                    <?php echo isset($stats['out_of_stock']) ? $stats['out_of_stock'] : 0; ?>
+                ],
+                backgroundColor: [
+                    '#10B981', // green
+                    '#F59E0B', // yellow
+                    '#EF4444'  // red
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+
+    // Sales Trend Chart (Line)
+    const salesCtx = document.getElementById('salesTrendChart').getContext('2d');
+    new Chart(salesCtx, {
+        type: 'line',
+        data: {
+            labels: [
+                <?php 
+                foreach ($sales_trend as $day) {
+                    echo "'" . date('M j', strtotime($day->date)) . "',";
+                }
+                ?>
+            ],
+            datasets: [{
+                label: 'Sales ($)',
+                data: [
+                    <?php 
+                    foreach ($sales_trend as $day) {
+                        echo $day->total_sales . ',';
+                    }
+                    ?>
+                ],
+                borderColor: '#3B82F6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Categories Chart (Bar)
+    const categoriesCtx = document.getElementById('categoriesChart').getContext('2d');
+    new Chart(categoriesCtx, {
+        type: 'bar',
+        data: {
+            labels: [
+                <?php 
+                foreach ($categories_data as $category) {
+                    echo "'" . esc_js($category->name) . "',";
+                }
+                ?>
+            ],
+            datasets: [{
+                label: 'Items',
+                data: [
+                    <?php 
+                    foreach ($categories_data as $category) {
+                        echo $category->item_count . ',';
+                    }
+                    ?>
+                ],
+                backgroundColor: '#8B5CF6',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+
+    // Locations Chart (Pie)
+    const locationsCtx = document.getElementById('locationsChart').getContext('2d');
+    new Chart(locationsCtx, {
+        type: 'pie',
+        data: {
+            labels: [
+                <?php 
+                foreach ($locations_data as $location) {
+                    echo "'" . esc_js($location->name) . "',";
+                }
+                ?>
+            ],
+            datasets: [{
+                data: [
+                    <?php 
+                    foreach ($locations_data as $location) {
+                        echo $location->item_count . ',';
+                    }
+                    ?>
+                ],
+                backgroundColor: [
+                    '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', 
+                    '#EF4444', '#06B6D4', '#84CC16', '#F97316'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+
+    // Top Items Chart (Horizontal Bar)
+    const topItemsCtx = document.getElementById('topItemsChart').getContext('2d');
+    new Chart(topItemsCtx, {
+        type: 'bar',
+        data: {
+            labels: [
+                <?php 
+                foreach ($top_items as $item) {
+                    echo "'" . esc_js($item->name) . "',";
+                }
+                ?>
+            ],
+            datasets: [{
+                label: 'Units Sold',
+                data: [
+                    <?php 
+                    foreach ($top_items as $item) {
+                        echo $item->total_sold . ',';
+                    }
+                    ?>
+                ],
+                backgroundColor: '#10B981',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+
 <style>
-.quick-actions {
-    margin: 2rem 0;
+.dashboard-charts {
+    margin-top: 2rem;
+}
+
+.chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.chart-card {
     background: white;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border-radius: 12px;
     padding: 1.5rem;
-}
-
-.action-buttons {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    margin-top: 1rem;
-}
-
-.recent-items {
-    margin: 2rem 0;
-}
-
-.empty-state {
-    text-align: center;
-    padding: 3rem;
-    background: white;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-}
-
-.item-pricing {
-    display: flex;
-    gap: 1rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid #f3f4f6;
-}
-
-.price-label {
-    font-size: 0.875rem;
-    color: #6b7280;
-}
-
-.low-stock-alerts {
-    margin: 2rem 0;
-    background: #fef3c7;
-    border: 1px solid #f59e0b;
-    border-radius: 8px;
-    padding: 1.5rem;
-}
-
-.alert-list {
-    margin-top: 1rem;
-}
-
-.alert-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem;
-    background: white;
-    border-radius: 6px;
-    margin-bottom: 0.5rem;
-    transition: all 0.2s ease;
-    cursor: pointer;
-}
-
-.alert-item:hover {
-    background: #f8fafc;
-    transform: translateX(4px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #f1f5f9;
 }
 
-.alert-info strong {
-    display: block;
+.chart-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.chart-header {
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 1rem;
+}
+
+.chart-header h3 {
+    margin: 0 0 0.5rem 0;
     color: #1f2937;
-}
-
-.item-category {
-    font-size: 0.875rem;
-    color: #6b7280;
-}
-
-.alert-quantity {
+    font-size: 1.1rem;
     font-weight: 600;
 }
 
-.current-stock {
-    color: #dc2626;
-}
-
-.min-level {
+.chart-header p {
+    margin: 0;
     color: #6b7280;
+    font-size: 0.875rem;
 }
 
-.btn-sm {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.8125rem;
+.chart-container {
+    height: 300px;
+    position: relative;
+}
+
+.chart-card.full-width .chart-container {
+    height: 250px;
+}
+
+@media (max-width: 768px) {
+    .chart-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
 }
 </style>
-
-<script>
-// Dashboard navigation functions
-function navigateToTab(tab) {
-    console.log('Navigating to tab:', tab);
-    window.location.href = '?tab=' + tab;
-}
-
-// Navigate with filter for inventory
-function navigateWithFilter(tab, filter) {
-    console.log('Navigating to tab:', tab, 'with filter:', filter);
-    if (tab === 'inventory') {
-        // Store the filter preference for when the inventory page loads
-        localStorage.setItem('dashboard_filter', filter);
-        window.location.href = '?tab=' + tab;
-    } else {
-        window.location.href = '?tab=' + tab;
-    }
-}
-
-function openModal(modalId) {
-    switch(modalId) {
-        case 'add-item-modal':
-            window.location.href = '?tab=inventory';
-            break;
-        case 'add-category-modal':
-            window.location.href = '?tab=categories';
-            break;
-        case 'add-location-modal':
-            window.location.href = '?tab=locations';
-            break;
-        default:
-            console.log('Modal not found:', modalId);
-    }
-}
-
-// Item action functions
-function editItem(itemId) {
-    window.location.href = '?tab=inventory&action=edit&item_id=' + itemId;
-}
-
-function sellItem(itemId) {
-    window.location.href = '?tab=inventory&action=sell&item_id=' + itemId;
-}
-
-function restockItem(itemId) {
-    const quantity = prompt('Enter quantity to add to stock:');
-    if (quantity && !isNaN(quantity) && parseInt(quantity) > 0) {
-        // Get current item details first
-        fetch(warehouse_ajax.ajax_url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                action: 'get_inventory_item',
-                nonce: warehouse_ajax.nonce,
-                item_id: itemId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const item = data.data;
-                const newQuantity = parseInt(item.quantity) + parseInt(quantity);
-                
-                // Update the item with new quantity
-                const updateData = new URLSearchParams({
-                    action: 'update_inventory_item',
-                    nonce: warehouse_ajax.nonce,
-                    item_id: itemId,
-                    name: item.name,
-                    internal_id: item.internal_id,
-                    description: item.description,
-                    category_id: item.category_id,
-                    location_id: item.location_id,
-                    quantity: newQuantity,
-                    purchase_price: item.purchase_price,
-                    selling_price: item.selling_price,
-                    min_stock_level: item.min_stock_level
-                });
-                
-                return fetch(warehouse_ajax.ajax_url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: updateData
-                });
-            } else {
-                throw new Error('Failed to get item details');
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Stock updated successfully! Added ' + quantity + ' items.');
-                location.reload();
-            } else {
-                alert('Error updating stock: ' + (data.data || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error updating stock. Please try again.');
-        });
-    }
-}
-
-// View item details function
-function viewItemDetails(itemId) {
-    // Navigate to inventory page and search for the specific item
-    localStorage.setItem('dashboard_search_item', itemId);
-    window.location.href = '?tab=inventory';
-}
-
-// Initialize dashboard
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Dashboard loaded');
-});
-</script> 

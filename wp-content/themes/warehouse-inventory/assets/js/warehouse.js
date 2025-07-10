@@ -87,4 +87,56 @@ function showAlert(message, type) {
     } else {
         alert(message);
     }
-} 
+}
+
+// Team management functions
+function submitAddMember() {
+    const form = jQuery('#add-member-form');
+    const formData = {
+        action: 'add_team_member',
+        nonce: warehouse_ajax.nonce,
+        username: form.find('[name="username"]').val(),
+        email: form.find('[name="email"]').val(),
+        first_name: form.find('[name="first_name"]').val(),
+        last_name: form.find('[name="last_name"]').val(),
+        role: form.find('[name="role"]').val(),
+        department: form.find('[name="department"]').val(),
+        position: form.find('[name="position"]').val(),
+        phone: form.find('[name="phone"]').val()
+    };
+    
+    // Basic validation
+    if (!formData.username || !formData.email || !formData.first_name || !formData.last_name || !formData.role) {
+        showAlert('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    jQuery.post(warehouse_ajax.ajax_url, formData, function(response) {
+        if (response.success) {
+            showAlert('Team member added successfully!', 'success');
+            closeModal('add-member-modal');
+            loadTeamMembers(); // Reload the team list
+        } else {
+            showAlert(response.data || 'Failed to add team member', 'error');
+        }
+    }).fail(function() {
+        showAlert('Network error. Please try again.', 'error');
+    });
+}
+
+// Team member loading function is defined in team.php template
+
+// Modal handling for new structure
+jQuery(document).ready(function($) {
+    // Close modal when clicking the overlay
+    $(document).on('click', '.modal-overlay', function(e) {
+        if (e.target === this) {
+            $(this).hide();
+        }
+    });
+    
+    // Close modal with close button
+    $(document).on('click', '.modal-close, .btn-close-modal', function() {
+        $(this).closest('.modal-overlay').hide();
+    });
+}); 
