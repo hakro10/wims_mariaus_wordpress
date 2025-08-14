@@ -29,6 +29,8 @@ class WarehouseInventoryManager {
     }
     
     public function init() {
+        $this->run_migrations();
+
         // Load text domain for translations
         load_plugin_textdomain('warehouse-inventory', false, dirname(plugin_basename(__FILE__)) . '/languages');
         
@@ -82,6 +84,30 @@ class WarehouseInventoryManager {
             error_log('Database migration failed: ' . $e->getMessage());
         }
     }
+
+    public function run_migrations() {
+        $stored_version = get_option('wh_inventory_version', '0.0.0');
+        if (version_compare($stored_version, WH_INVENTORY_VERSION, '<')) {
+            global $wpdb;
+
+            // Migration for renaming item_id to inventory_item_id in wh_sales
+            $sales_table = $wpdb->prefix . 'wh_sales';
+            $sales_columns = $wpdb->get_results("SHOW COLUMNS FROM `{$sales_table}` LIKE 'item_id'");
+            if (!empty($sales_columns)) {
+                $wpdb->query("ALTER TABLE `{$sales_table}` CHANGE `item_id` `inventory_item_id` MEDIUMINT(9) NOT NULL");
+            }
+
+            // Migration for adding tested_status to wh_inventory_items
+            $items_table = $wpdb->prefix . 'wh_inventory_items';
+            $items_columns = $wpdb->get_results("SHOW COLUMNS FROM `{$items_table}` LIKE 'tested_status'");
+            if (empty($items_columns)) {
+                $wpdb->query("ALTER TABLE `{$items_table}` ADD `tested_status` VARCHAR(20) DEFAULT 'not_tested' AFTER `stock_status`");
+            }
+
+            // Update the version number
+            update_option('wh_inventory_version', WH_INVENTORY_VERSION);
+        }
+    }
     
     public function deactivate() {
         // Clean up if needed
@@ -118,6 +144,7 @@ class WarehouseInventoryManager {
             unit varchar(20) DEFAULT 'pieces',
             status varchar(50) DEFAULT 'active',
             stock_status varchar(50) DEFAULT 'in-stock',
+            tested_status varchar(20) DEFAULT 'not_tested',
             image_url varchar(500),
             qr_code_image text,
             notes text,
@@ -218,7 +245,7 @@ class WarehouseInventoryManager {
         $sql .= "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}wh_sales (
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             sale_number varchar(100) NOT NULL UNIQUE,
-            item_id mediumint(9) NOT NULL,
+            inventory_item_id mediumint(9) NOT NULL,
             quantity_sold int(11) NOT NULL,
             unit_price decimal(10,2) NOT NULL,
             discount_amount decimal(10,2) DEFAULT 0,
@@ -241,7 +268,7 @@ class WarehouseInventoryManager {
             metadata text,
             PRIMARY KEY (id),
             UNIQUE KEY unique_sale_number (sale_number),
-            INDEX idx_item (item_id),
+            INDEX idx_item (inventory_item_id),
             INDEX idx_date (sale_date),
             INDEX idx_customer (customer_email),
             INDEX idx_status (payment_status)
@@ -706,17 +733,6 @@ class WarehouseInventoryManager {
         $tested_status = sanitize_text_field($_POST['tested_status']);
         $total_lot_price = floatval($_POST['total_lot_price']);
         
-        // Check if tested_status column exists, if not add it
-        $table_name = $wpdb->prefix . 'wh_inventory_items';
-        $column_exists = $wpdb->get_results($wpdb->prepare(
-            "SHOW COLUMNS FROM `{$table_name}` LIKE %s",
-            'tested_status'
-        ));
-        
-        if (empty($column_exists)) {
-            // Add the column if it doesn't exist
-            $wpdb->query("ALTER TABLE `{$table_name}` ADD COLUMN `tested_status` VARCHAR(20) DEFAULT 'not_tested'");
-        }
         
         $update_data = array(
             'name' => $name,
@@ -797,21 +813,9 @@ class WarehouseInventoryManager {
             wp_send_json_error('Invalid tested status');
         }
         
-        // Check if tested_status column exists, if not add it
-        $table_name = $wpdb->prefix . 'wh_inventory_items';
-        $column_exists = $wpdb->get_results($wpdb->prepare(
-            "SHOW COLUMNS FROM `{$table_name}` LIKE %s",
-            'tested_status'
-        ));
-        
-        if (empty($column_exists)) {
-            // Add the column if it doesn't exist
-            $wpdb->query("ALTER TABLE `{$table_name}` ADD COLUMN `tested_status` VARCHAR(20) DEFAULT 'not_tested'");
-        }
-        
         // Update the tested status
         $result = $wpdb->update(
-            $table_name,
+            $wpdb->prefix . 'wh_inventory_items',
             array(
                 'tested_status' => $tested_status
             ),
@@ -1163,22 +1167,9 @@ class WarehouseInventoryManager {
     
     // Team Management AJAX Handlers
     public function handle_get_team_members() {
-        error_log('=== HANDLE_GET_TEAM_MEMBERS CALLED ===');
-        error_log('POST data: ' . print_r($_POST, true));
-        error_log('Request method: ' . $_SERVER['REQUEST_METHOD']);
-        error_log('Is AJAX: ' . (defined('DOING_AJAX') && DOING_AJAX ? 'YES' : 'NO'));
-        
         check_ajax_referer('warehouse_nonce', 'nonce');
-        error_log('Nonce verified successfully');
         
-        $current_user = wp_get_current_user();
-        error_log('Current user: ' . $current_user->user_login . ' (ID: ' . $current_user->ID . ')');
-        error_log('User roles: ' . implode(', ', $current_user->roles));
-        error_log('Has manage_options: ' . (current_user_can('manage_options') ? 'yes' : 'no'));
-        error_log('Has edit_posts: ' . (current_user_can('edit_posts') ? 'yes' : 'no'));
-        
-        if (!current_user_can('manage_options') && !current_user_can('edit_posts')) {
-            error_log('Permission denied for user');
+        if (!current_user_can('manage_options')) {
             wp_send_json_error('Insufficient permissions');
         }
         
@@ -1189,14 +1180,10 @@ class WarehouseInventoryManager {
                 LEFT JOIN {$wpdb->users} u ON tm.user_id = u.ID
                 ORDER BY tm.created_at DESC";
         
-        error_log('SQL query: ' . $sql);
-        
         $members = $wpdb->get_results($sql);
         
-        error_log('Members found: ' . count($members));
-        error_log('Raw members data: ' . print_r($members, true));
         if ($wpdb->last_error) {
-            error_log('SQL error: ' . $wpdb->last_error);
+            error_log('Warehouse Inventory Manager - SQL error in handle_get_team_members: ' . $wpdb->last_error);
         }
         
         wp_send_json_success($members);
@@ -1469,7 +1456,6 @@ class WarehouseInventoryManager {
                 $wpdb->prefix . 'wh_sales',
                 array(
                     'sale_number' => $sale_number,
-                    'item_id' => $item_id,
                     'inventory_item_id' => $item_id,
                     'quantity_sold' => $quantity,
                     'unit_price' => $unit_price,
@@ -1483,7 +1469,7 @@ class WarehouseInventoryManager {
                     'notes' => $notes
                 ),
                 array(
-                    '%s', '%d', '%d', '%d', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%s'
+                    '%s', '%d', '%d', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%s'
                 )
             );
             
@@ -1565,7 +1551,7 @@ class WarehouseInventoryManager {
             $sales_data = $wpdb->get_results($wpdb->prepare(
                 "SELECT s.*, i.purchase_price 
                  FROM {$wpdb->prefix}wh_sales s
-                 LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+                 LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.inventory_item_id = i.id
                  WHERE YEAR(s.sale_date) = %d AND MONTH(s.sale_date) = %d",
                 date('Y', strtotime($date)),
                 date('n', strtotime($date))
@@ -1575,7 +1561,7 @@ class WarehouseInventoryManager {
             $sales_data = $wpdb->get_results($wpdb->prepare(
                 "SELECT s.*, i.purchase_price 
                  FROM {$wpdb->prefix}wh_sales s
-                 LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+                 LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.inventory_item_id = i.id
                  WHERE DATE(s.sale_date) = %s",
                 $date
             ));
@@ -1647,7 +1633,7 @@ class WarehouseInventoryManager {
                 $sales_data = $wpdb->get_results($wpdb->prepare(
                     "SELECT s.quantity_sold, i.purchase_price 
                      FROM {$wpdb->prefix}wh_sales s
-                     LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+                     LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.inventory_item_id = i.id
                      WHERE DATE(s.sale_date) = %s",
                     $date
                 ));
@@ -1695,7 +1681,7 @@ class WarehouseInventoryManager {
                 $sales_data = $wpdb->get_results($wpdb->prepare(
                     "SELECT s.quantity_sold, i.purchase_price 
                      FROM {$wpdb->prefix}wh_sales s
-                     LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.item_id = i.id
+                     LEFT JOIN {$wpdb->prefix}wh_inventory_items i ON s.inventory_item_id = i.id
                      WHERE YEAR(s.sale_date) = %d AND MONTH(s.sale_date) = %d",
                     $monthly_sales->year,
                     $monthly_sales->month
